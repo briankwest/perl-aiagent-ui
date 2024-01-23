@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Login</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+  </head>
+  <body>
+    <header>
+      <nav>
+	  <a href="<TMPL_VAR name="path"/>">SignalWire AI Agent</a>
+      </nav>
+    </header>
+    <h2>Login</h2>
+    <TMPL_IF EXPR="(error > 0)">
+      <center><bold><font color="red">Invalid username or password</font></bold></center>
+    </TMPL_IF>
+    <form action="/login" method="POST" accept-charset="utf-8">
+      <center>
+	<label for="username">Username:</label>
+	<input id="username" name="username" required><br/>
+	<label for="password">Password:</label>
+	<input type="password" id="password" name="password" required><br/>
+      <br><br>
+      <center><input type="submit" value="Login" class="add-button"></center><br><br>
+    </form>
+  </body>
+</html>
+

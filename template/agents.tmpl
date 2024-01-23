@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SignalWire AI Agents</title>
+  <link rel="stylesheet" href="/assets/style.css" type="text/css">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+    function confirmSubmit(event) {
+    var confirmAction = confirm("Are you sure you want to delete this agent?");
+	if (!confirmAction) {
+            event.preventDefault();  // Prevents the default action (form submission) if user cancels
+	}
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        var buttons = document.querySelectorAll(".submit-button");
+        buttons.forEach(function(button) {
+            button.addEventListener("click", confirmSubmit);
+        });
+    });
+  </script>
+</head>
+<body>
+  <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+  </header>
+  <h2>Agents</h2>
+  <table>
+    <tr>
+      <th>Name</th>
+      <th>Description</th>
+      <th>Action</th>
+    </tr>
+    <TMPL_LOOP name="agents">
+    <tr>
+      <td><a href="<TMPL_VAR name="url"/>/agent?agent_id=<TMPL_VAR name="id"/>"><TMPL_VAR name="name"/></a></td>
+      <td><TMPL_VAR name="description"/></td>
+      <td>
+	<form action="<TMPL_VAR name="url"/>" accept-charset="utf-8" method="POST" class="inline-form">
+	  <input type="hidden" name="action" value="delete">
+	  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>"><br>
+	  <input type="submit" class="submit-button" id="submit-button" value="Delete">
+	</form>
+	<form action="<TMPL_VAR name="url"/>" accept-charset="utf-8" method="POST" class="inline-form">
+	  <input type="hidden" name="action" value="edit">
+	  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>"><br>
+	  <input type="submit" class="add-button" id="submit-button" value="Edit">
+	</form>
+      </td>
+    </tr>
+    </TMPL_LOOP>
+  </table>
+  <center>
+    <form action="/" method="POST" accept-charset="utf-8">
+      <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+      <input hidden id="action" name="action" value="add">
+      <input type="submit" value="Add Agent" class="add-button">
+    </form>
+  </center>
+  <br/>
+</body>
+</html>

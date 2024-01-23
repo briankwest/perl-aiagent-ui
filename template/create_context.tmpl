@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Contexts</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2>Create Context</h2>
+    <form action="/contexts" method="POST" accept-charset="utf-8">
+      <table cellpadding="4">
+	<tr>
+	  <td>
+	    <label for="ctxname">Name:</label>
+	    <input id="ctxname" name="name" required><br/>
+	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
+	    <input hidden id="action" name="action" value="create">
+	    <label for="pattern">Pattern:</label>
+	    <input id="pattern" name="pattern" required><br/>
+    
+	    <label for="toggle_function">Toggle Function:</label>
+	    <input id="toggle_function" name="toggle_function"><br/>
+
+	    <label for="consolidate">Consolidate:</label>
+	    <input type="checkbox" id="consolidate" name="consolidate"><br/>
+	    <h3>User Prompt</h3>
+	    <label for="editorContent" style="display:none;">User Prompt</label>
+	    <div id="editor" style="height: 200px; width: 800px;"></div>
+	    <script nonce="<TMPL_VAR name="nonce"/>">
+	      var editor = ace.edit("editor");
+	      editor.setTheme("ace/theme/monokai");
+	      editor.session.setMode("ace/mode/markdown");
+	      document.getElementById('markdownForm').addEventListener('submit', function() {
+	      document.getElementById('editorContent').value = editor.getValue();
+	      });
+	    </script>
+	    <input type="hidden" name="user_prompt" id="editorContent">
+	    <h3>System Prompt</h3>
+
+	    <label for="syseditorContent" style="display:none;">System Prompt</label>
+	    <div id="syseditor" style="height: 300px; width: 800px;"></div>
+	    <script nonce="<TMPL_VAR name="nonce"/>">
+	      var syseditor = ace.edit("syseditor");
+	      syseditor.setTheme("ace/theme/monokai");
+	      syseditor.session.setMode("ace/mode/markdown");
+	      document.getElementById('markdownForm').addEventListener('submit', function() {
+	      document.getElementById('syseditorContent').value = syseditor.getValue();
+	      });
+	    </script>
+	    <input type="hidden" name="system_prompt" id="syseditorContent">
+	  <td>
+	</tr>
+      </table><br><br>
+      <center><input type="submit" value="Create" class="submit-button"></center><br><br>
+    </form>
+  </body>
+</html>
+

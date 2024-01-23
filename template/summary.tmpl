@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Summaries</title>
+  <link rel="stylesheet" href="/assets/style.css" type="text/css">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+    function confirmSubmit(event) {
+    var confirmAction = confirm("Are you sure you want to delete this summary?");
+	if (!confirmAction) {
+            event.preventDefault();  // Prevents the default action (form submission) if user cancels
+	}
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        var buttons = document.querySelectorAll(".submit-button");
+        buttons.forEach(function(button) {
+            button.addEventListener("click", confirmSubmit);
+        });
+    });
+  </script>
+</head>
+<body>
+  <header>
+    <nav>
+      <TMPL_LOOP name="nav">
+	<a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+      </TMPL_LOOP>
+    </nav>
+  </header>
+  <h2>Summaries</h2>
+  <table cellpadding="4">
+    <tr>
+      <th align="left">ID</th>
+      <th align="left">Convo ID</th>
+      <th width="250" align="left">Created</th>
+      <th align="left">Summary</th>
+      <th align="left">Action</th>
+    </tr>
+    <TMPL_LOOP name="table_contents">
+    <tr>
+      <td><TMPL_VAR name="id"/></td>
+      <td><TMPL_VAR name="convo_id"/></td>
+      <td><TMPL_VAR name="created"/></td>
+      <td><TMPL_VAR name="summary"/></td>
+      <td>
+	<form action="/summary" method="POST" accept-charset="utf-8">
+	  <input type="hidden" name="action" value="delete">
+	  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+	  <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	  <input type="submit" id="submit-button" class="submit-button" value="Delete">
+	</form>
+      </td>
+      
+    </tr>
+    </TMPL_LOOP>
+  </table>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><TMPL_VAR name="_title"/></title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2><TMPL_VAR name="_description"/></h2>
+    <form action="/<TMPL_VAR name="table"/>" method="POST" accept-charset="utf-8" class="inline-form">
+      <tmpl_loop name="fields">
+	<div>
+          <label for="<tmpl_var name="name">"><tmpl_var name="hdr"></label>
+          <input type="<tmpl_var name="type">" name="<tmpl_var name="name">" value="<tmpl_var name="value">">
+	</div>
+      </tmpl_loop>
+      <input type="hidden" name="action" value="update">
+      <center><input type="submit" value="Update" class="submit-button"></center>
+    </form>
+  </body>
+</html>
+

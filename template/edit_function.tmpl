@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Functions</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2>Edit Function</h2>
+    <form id="functionForm" action="/functions" method="POST" accept-charset="utf-8">
+      <table cellpadding="4">
+	<tr>
+	  <td>
+	    <label for="name">Name:</label>
+	    <input id="name" name="name" value="<TMPL_VAR name="name"/>" required><br/>
+	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
+	    <input hidden id="action" name="action" value="update">
+	    <label for="purpose">Purpose:</label>
+	    <input id="purpose" style="width: 400px;" name="purpose" value="<TMPL_VAR name="purpose"/>" required><br/>
+
+    	    <label for="active">Active:</label>
+	    <input type="checkbox" id="active" name="active" <TMPL_VAR name="active_checked">><br/>
+
+	    <label for="argument">Argument:</label>
+	    <input id="argument" style="width: 500px;" name="argument" value="<TMPL_VAR name="argument"/>" required><br/>
+
+	    <label for="code">Code:</label>
+	    <div id="editor" style="height: 600px; width: 800px;"><TMPL_VAR name="code"/></div>
+
+	    <script nonce="<TMPL_VAR name="nonce"/>">
+              var editor = ace.edit("editor");
+              editor.setTheme("ace/theme/monokai");
+              editor.session.setMode("ace/mode/perl");
+	      document.getElementById('functionForm').addEventListener('submit', function() {
+		  document.getElementById('editorContent').value = editor.getValue();
+              });
+	    </script>
+	    <input type="hidden" name="code" id="editorContent">
+	  <td>
+	</tr>
+      </table><br><br>
+      <center><input type="submit" value="Update"  class="submit-button"></center><br><br>
+    </form>
+  </body>
+</html>
+

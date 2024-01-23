@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Agents</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2>Create Agent</h2>
+    <form action="/" method="POST" accept-charset="utf-8">
+      <table cellpadding="4">
+	<tr>
+	  <td>
+	    <input hidden id="action" name="action" value="create">
+	    <label for="name">Name:</label>
+	    <input id="name" name="name" required><br/>
+
+	    <label for="description">Description:</label>
+	    <input id="description" name="description" required><br/>
+
+	    <label for="hints">Hints:</label>
+	    <input id="hints" name="hints"><br/>
+	  </td>
+	</tr>
+      </table><br><br>
+      <center><input type="submit" value="Create" class="submit-button"></center><br><br>
+    </form>
+  </body>
+</html>
+

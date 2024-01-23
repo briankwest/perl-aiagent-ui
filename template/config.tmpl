@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Configuration</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+</head>
+<body>
+  <header>
+    <nav>
+      <TMPL_LOOP name="nav">
+	<a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+      </TMPL_LOOP>
+    </nav>
+  </header>
+  <h2>Configuration</h2>
+  <form action="<TMPL_VAR name="url"/>?agent_id=<TMPL_VAR name="agent_id"/>" method="POST" accept-charset="utf-8">
+  <center>
+    <table>
+      <tr>
+	<th>Setting</th>
+	<th>Value</th>
+      </tr>
+      <tr>
+	<td>Voice Webhook:</td>
+	<td><input type="text" size="100" name="voice" value="<TMPL_VAR name="swml_url">" readonly></td>
+      </tr>
+      <tr>
+	<td>Messaging Webhook</td>
+	<td><input type="text" size="100" name="message" value="<TMPL_VAR name="laml_url">" readonly></td>
+      </tr>
+    </table>
+  </center>
+  <br><br>
+  <table>
+    <tr>
+      <th>Setting</th>
+      <th>Value</th>
+    </tr>
+    <TMPL_LOOP name="controls">
+      <tr>
+	<td><TMPL_VAR name="var"/></td>
+	<td><input type="checkbox" name="<TMPL_VAR name="var"/>" value="<TMPL_VAR name="val"/>" <TMPL_VAR name="checked"/>><td>
+      </tr>
+    </TMPL_LOOP>
+    
+    <TMPL_LOOP name="fields">
+      <tr>
+	<td><TMPL_VAR name="var"/></td>
+	<td><input type="text" size="100" name="<TMPL_VAR name="var"/>" value="<TMPL_VAR name="val"/>"><td>
+      </tr>
+    </TMPL_LOOP>
+    </table><br>
+    <center><input type="submit" value="save"  class="submit-button"></center><br><br>
+  </form>
+</body>
+</html>
+

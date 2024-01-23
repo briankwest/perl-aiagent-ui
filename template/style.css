@@ -1,0 +1,110 @@
+body {
+    font-family: Tahoma, Arial, sans-serif;
+    color: #ffffff;
+    background-color: #222222;
+}
+
+left-col {
+    width: 20%;
+}
+
+.right-col {
+    width: 80%;
+}
+
+table {
+    width: 90%; /* If 90% width is preferred, change this */
+    margin: 0 auto; /* Combined margin-left and margin-right */
+    border: none;
+    border-spacing: 0px;
+}
+
+table, th, td {
+    border: none;
+}
+
+table td {
+    padding: 10px; /* Choose between 6px or 10px, and use one */
+    min-width: 100px;
+}
+
+h1, p, a {
+    color: #ffffff;
+}
+
+h2 {
+    text-align: center;
+    color: #ffffff;
+}
+
+a {
+    text-decoration: none;
+    color: #50D2E9; /* If there's a conflict, choose one color */
+}
+
+a:hover {
+    color: #33CCFF;
+}
+
+button, .submit-button {
+    font-size: 16px;
+    color: #FFFFFF;
+    background-color: #4CAF50;
+    border: none;
+    padding: 10px 20px;
+    text-align: center;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+button:hover, .submit-button:hover {
+    background-color: #45a049;
+}
+
+header {
+    background-color: #f2f2f2;
+    padding: 10px;
+    text-align: center;
+}
+
+header nav a {
+    margin: 0 10px;
+    text-decoration: none;
+    color: #333;
+}
+
+.collapsible {
+    cursor: pointer;
+    text-align: center;
+    width: auto;
+    display: inline-block;
+}
+
+.content {
+    display: none;
+    overflow: hidden;
+    background-color: #222222;
+    margin: 0 auto;
+}
+
+.copy-button {
+    text-align: center;
+    width: auto;
+    cursor: pointer;
+}
+
+.system {
+    background-color: #872126;
+}
+
+.assistant {
+    background-color: #364285;
+}
+
+.user {
+    background-color: #236A1C;
+}
+
+.function {
+    background-color: #CD00C4;
+}

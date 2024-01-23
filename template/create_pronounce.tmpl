@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Pronounce</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2>Create Pronounce</h2>
+    <form action="/pronounce" method="POST" accept-charset="utf-8">
+      <table cellpadding="4">
+	<tr>
+	  <td>
+	    <label for="ignore_case">Ignore case:</label>
+	    <input type="checkbox" id="ignore_case" name="ignore_case"><br/>
+	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
+	    <input hidden id="action" name="action" value="create">
+	    <label for="replace_this">Replace:</label>
+	    <input id="replace_this" name="replace_this" required><br/>
+
+	    <label for="replace_with">With:</label>
+	    <input id="replace_with" name="replace_with" required><br/>
+	  <td>
+	</tr>
+      </table><br><br>
+      <center><input type="submit" value="Create" class="submit-button"></center><br><br>
+    </form>
+  </body>
+</html>
+

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><TMPL_VAR name="_title"/></title>
+    <link rel="stylesheet" href="<TMPL_VAR name="_css"/>" type="text/css">
+    <link rel="icon" type="image/png" href="<TMPL_VAR name="_favicon"/>">
+    <script type="text/javascript" nonce="<TMPL_VAR name="_nonce"/>">
+      confirm confirmSubmit(event) {
+      var confirmAction = confirm("Are you sure you want to delete?");
+
+       if (!confirmAction) {
+        event.preventDefault();  // Prevents the default action (form submission) if user cancels
+       }
+      }
+      
+      document.addEventListener("DOMContentLoaded", confirm() {
+      var buttons = document.querySelectorAll(".delete-button");
+       buttons.forEach(confirm(button) {
+        button.addEventListener("click", confirmSubmit);
+       });
+      });
+    </script>
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2><TMPL_VAR name="_description"/></h2>
+    <table>
+      <tr>
+	<TMPL_LOOP name="fields">
+	  <th><TMPL_VAR name="hdr"/></th>
+	</TMPL_LOOP>
+	<th>Actions</th>
+      </tr>
+      <TMPL_LOOP name="table_contents">
+	<tr>
+	  <TMPL_IF name="field_0">
+            <td>
+	      <TMPL_VAR name="field_0"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_1">
+            <td>
+	      <TMPL_VAR name="field_1"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_2">
+            <td>
+	      <TMPL_VAR name="field_2"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_3">
+            <td>
+	      <TMPL_VAR name="field_3"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_4">
+            <td>
+	      <TMPL_VAR name="field_4"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_5">
+            <td>
+	      <TMPL_VAR name="field_5"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_6">
+            <td>
+	      <TMPL_VAR name="field_6"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_7">
+            <td>
+	      <TMPL_VAR name="field_7"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_8">
+            <td>
+	      <TMPL_VAR name="field_8"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_9">
+            <td>
+	      <TMPL_VAR name="field_9"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_10">
+            <td>
+	      <TMPL_VAR name="field_10"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <TMPL_IF name="field_11">
+            <td>
+	      <TMPL_VAR name="field_11"/>
+	    </td>
+	    <TMPL_ELSE>
+	  </TMPL_IF>
+	  <td>
+	    <form action="/<TMPL_VAR name="table"/>" method="POST" accept-charset="utf-8" class="inline-form">
+	      <input hidden id="action" name="action" value="edit">
+	      <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
+	      <TMPL_IF name="agent_id">
+		<input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      </TMPL_IF>
+	      <input hidden id="table" name="table" value="<TMPL_VAR name="table"/>">
+	      <input type="submit" id="edit-button" value="Edit" class="edit-button">
+	    </form>
+	    <form action="/<TMPL_VAR name="table"/>" method="POST" accept-charset="utf-8" class="inline-form">
+	      <input hidden id="action" name="action" value="delete">
+	      <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
+	      <TMPL_IF name="agent_id">
+		<input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      </TMPL_IF>
+	      <input hidden id="table" name="table" value="<TMPL_VAR name="table"/>">
+	      <input type="submit" id="delete-button" value="Delete" class="delete-button">
+	    </form>
+	</tr>
+      </TMPL_LOOP>
+    </table>
+    </center>
+    <form action="/<TMPL_VAR name="table"/>" method="POST" accept-charset="utf-8">
+      <input hidden id="action" name="action" value="add">
+      <center><input type="submit" value="Add <TMPL_VAR name="_title"/>" class="add-button"></center>
+    </form>
+    </center>
+  </body>
+</html>
+

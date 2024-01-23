@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Languages</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2>Create Language</h2>
+    <form action="/languages" method="POST" accept-charset="utf-8">
+      <table cellpadding="4">
+	<tr>
+	  <td>
+	    <label for="code">Code:</label>
+	    <input id="code" name="code" required><br/>
+	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
+	    <input hidden id="action" name="action" value="create">
+	    <label for="name">Name:</label>
+	    <input id="name" name="name" required><br/>
+
+	    <label for="voice">Voice:</label>
+	    <input id="voice" name="voice" required><br/>
+
+	    <label for="engine">Engine:</label>
+	    <input id="engine" name="engine" required><br/>
+
+	    <label for="fillers">Fillers:</label>
+	    <input id="fillers" name="fillers"><br/>
+	  <td>
+	</tr>
+      </table><br><br>
+      <center><input type="submit" value="Create" class="submit-button"></center><br><br>
+    </form>
+  </body>
+</html>
+

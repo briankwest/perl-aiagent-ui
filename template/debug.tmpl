@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Debug</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+      var ws;
+      var textArea;
+      var messageInput;
+      var sendButton;
+      var clearOnReconnect;
+      var agentId = "<TMPL_VAR name="agent_id"/>";
+      var input = document.getElementById("message-input");
+      var retryCount = 0; // New variable for retry count
+      var maxRetries = 10; // Maximum number of retries
+      var baseDelay = 1000; // Base delay in milliseconds (1 second)
+      var maxDelay = 60000; // Maximum delay in milliseconds (60 seconds)
+
+
+      function appendMessage(message) {
+	  textArea.value += message + "\n";
+	  textArea.scrollTop = textArea.scrollHeight;
+      }
+      
+      function clearTextArea() {
+	  if (textArea) {
+	      textArea.value = '';
+	      console.log("Cleared text area");
+	  }
+      }
+      
+      function disconnectWebSocket() {
+	  if (ws) {
+	      ws.close();
+	      console.log("Disconnected from WebSocket");
+	  }
+      }
+      
+      function connectWebSocket() {
+	  if (ws && ws.readyState === WebSocket.OPEN) {
+              return;
+          }
+
+	  ws = new WebSocket("<TMPL_VAR name="wss"/>");
+	  
+	  if (clearOnReconnect) {
+	      clearTextArea();
+	  }
+	  
+	  ws.onopen = function() {
+	      ws.send(JSON.stringify({ type: 'subscribe', agent_id: agentId }));
+	      console.log("Connected to WebSocket");
+	  };
+	  
+	  ws.onmessage = function(event) {
+	      if (event.data === 'ping') {
+		  ws.send('pong');
+	      } else {
+		  var data = JSON.parse(event.data);
+		  appendMessage("Received:\n" + JSON.stringify(data, null, 2));
+	      }
+	  };
+	  
+	  ws.onclose = function(event) {
+	      var reason = "Closed. Code: " + event.code + ", Reason: " + (event.reason || 'None');
+
+	      if (retryCount < maxRetries) {
+		  var delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
+		  appendMessage(reason);
+		  console.log("WebSocket Closed");
+		  setTimeout(function() {
+		      console.log("Attempting to reconnect...");
+		      connectWebSocket();
+		  }, delay);
+	      }
+	  };
+	  
+	  ws.onerror = function(error) {
+	      if (retryCount < maxRetries) {
+		  var delay = Math.min(baseDelay * Math.pow(2, retryCount), maxDelay);
+		  console.log("WebSocket Error");
+		  setTimeout(function() {
+		      console.log("Attempting to reconnect...");
+		      connectWebSocket();
+		  }, delay);
+	      }
+	  };
+      }
+      
+      function sendMessage() {
+	  var message = messageInput.value.trim();
+	  if (message && ws && ws.readyState === WebSocket.OPEN) {
+	      var data = {
+		  agent_id: agentId,
+		  timestamp: new Date().toISOString(),
+		  message: message
+	      };
+	      ws.send(JSON.stringify(data));
+	      appendMessage("Sent:\n" + JSON.stringify(data , null, 2));
+	      messageInput.value = "";
+	  }
+      }
+
+      document.addEventListener("DOMContentLoaded", function() {
+	  textArea = document.getElementById("websocket-data");
+
+	  messageInput = document.getElementById("message-input");
+
+	  disconnectButton = document.getElementById("disconnect-button").addEventListener("click", disconnectWebSocket);
+
+	  reconnectButton = document.getElementById("reconnect-button").addEventListener("click", connectWebSocket);
+	  
+	  clearOnConnectCheckbox = document.getElementById("clear-on-reconnect").addEventListener("change", function() {
+	      clearOnReconnect = this.checked;
+	  })
+
+          document.getElementById("message-input").addEventListener("keypress", function(event) {
+              if (event.keyCode === 13) {
+                event.preventDefault();
+      		sendMessage();
+               }
+           });
+
+          clickClear = document.getElementById("clear-it").addEventListener("click", clearTextArea);
+      
+	  connectWebSocket();
+      });
+      </script>
+  </head>
+  <body>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
+    <h2>Debug</h2>
+    <textarea id="websocket-data" rows="40" cols="150" readonly></textarea><br>
+    <form id="send-cmd" accept-charset="utf-8">
+      <input type="text" size="50" id="message-input" placeholder="Enter command or message">
+    </form><br/>
+    <button type="button" id="disconnect-button">Disconnect</button>
+    <button type="button" id="reconnect-button">Reconnect</button>
+    <button type="button" id="clear-it">Clear</button>
+    Clear on Reconnect:<input type="checkbox" id="clear-on-reconnect" checked> 
+  </body>
+</html>
