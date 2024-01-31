@@ -7,52 +7,55 @@
     <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
     <h2>Prompt</h2>
     <form id="markdownForm" action="<TMPL_VAR name="url"/>?agent_id=<TMPL_VAR name="agent_id"/>" method="POST" accept-charset="utf-8">
-      <table>
-	<tr>
-	  <td>
-	    <h3>Prompt</h3>
-	    <label for="editorContent" style="display:none;">Prompt</label>
-	    <div id="editor" style="height: 600px; width: 800px;"><TMPL_VAR name="prompt"/></div>
-	    <script nonce="<TMPL_VAR name="nonce"/>">
-	      var editor = ace.edit("editor");
-	      editor.setTheme("ace/theme/monokai");
-	      editor.session.setMode("ace/mode/markdown");
-	      document.getElementById('markdownForm').addEventListener('submit', function() {
-	      document.getElementById('editorContent').value = editor.getValue();
-	      });
-	    </script>
-	    <input type="hidden" name="prompt" id="editorContent">
-	  <td>
-	</tr>
-	<tr>
-	  <td>
-	    <h3>Post Prompt</h3>
-	    <label for="posteditorContent" style="display:none;">Post Prompt</label>
-	    <div id="posteditor" style="height: 300px; width: 800px;"><TMPL_VAR name="post_prompt"/></div>
-	    <script nonce="<TMPL_VAR name="nonce"/>">
-	      var posteditor = ace.edit("posteditor");
-	      posteditor.setTheme("ace/theme/monokai");
-	      posteditor.session.setMode("ace/mode/markdown");
-	      document.getElementById('markdownForm').addEventListener('submit', function() {
-	      document.getElementById('posteditorContent').value = posteditor.getValue();
-	      });
-	    </script>
-	    <input type="hidden" name="post_prompt" id="posteditorContent">
-	  </td>
-	</tr>
-      </table>
-	<br/>
-	<center><input type="submit" value="save"  class="submit-button"></center><br/><br/>
+      <div class="container">
+	<table>
+	  <tr>
+	    <td style="text-align: center;">
+	      <h3>Prompt</h3>
+	      <label for="editorContent" style="display:none;">Prompt</label>
+	      <div id="editor" style="height: 600px; width: 1500px;"><TMPL_VAR name="prompt"/></div>
+	      <script nonce="<TMPL_VAR name="nonce"/>">
+		var editor = ace.edit("editor");
+		editor.setTheme("ace/theme/monokai");
+		editor.setOption("showPrintMargin", false);
+		editor.session.setMode("ace/mode/markdown");
+		document.getElementById('markdownForm').addEventListener('submit', function() {
+		document.getElementById('editorContent').value = editor.getValue();
+		});
+	      </script>
+	      <input type="hidden" name="prompt" id="editorContent">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: center;">
+	      <h3>Post Prompt</h3>
+	      <label for="posteditorContent" style="display:none;">Post Prompt</label>
+	      <div id="posteditor" style="height: 300px; width: 1500px;"><TMPL_VAR name="post_prompt"/></div>
+	      <script nonce="<TMPL_VAR name="nonce"/>">
+		var posteditor = ace.edit("posteditor");
+		posteditor.setTheme("ace/theme/monokai");
+		posteditor.setOption("showPrintMargin", false);
+		posteditor.session.setMode("ace/mode/markdown");
+		document.getElementById('markdownForm').addEventListener('submit', function() {
+		document.getElementById('posteditorContent').value = posteditor.getValue();
+		});
+	      </script>
+	      <input type="hidden" name="post_prompt" id="posteditorContent"><br/><br/>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td class="button">
+	      <br/><br/>
+	      <input type="submit" value="Save"  class="submit-button">
+	    </td>
+	  </tr>
+	</table>
+      </div>
     </form>
+    <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
   </body>
 </html>
 

@@ -4,42 +4,39 @@
     <title>Languages</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
-  <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
-    language confirmSubmit(event) {
-    var confirmAction = confirm("Are you sure you want to delete this language?");
+    <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+      function confirmSubmit(event) {
+      var confirmAction = confirm("Are you sure you want to delete this language?");
 	if (!confirmAction) {
-            event.preventDefault();  // Prevents the default action (form submission) if user cancels
+	    event.preventDefault();  // Prevents the default action (form submission) if user cancels
 	}
-    }
+      }
 
-    document.addEventListener("DOMContentLoaded", language() {
-        var buttons = document.querySelectorAll(".submit-button");
-        buttons.forEach(language(button) {
-            button.addEventListener("click", confirmSubmit);
-        });
-    });
-  </script>
+      document.addEventListener("DOMContentLoaded", function() {
+	var buttons = document.querySelectorAll(".delete-button");
+	buttons.forEach(function(button) {
+	    button.addEventListener("click", confirmSubmit);
+	});
+      });
+      function closeWindow() {
+	window.close(); // Close the current browser window/tab
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
-    <h2>Languages</h2>
-    <table>
-      <tr>
-	<th>Code</th>
-	<th>Name</th>
-	<th>Voice</th>
-	<th>Engine</th>
-	<th>Fillers</th>
-	<th>Action</th>
-      </tr>
-      <TMPL_LOOP name="languages">
+    <h2>Languages for <TMPL_VAR name="agent_name"/></h2>
+    <div class="container">
+      <table class="info-table">
 	<tr>
+	  <th>Code</th>
+	  <th>Name</th>
+	  <th>Voice</th>
+	  <th>Engine</th>
+	  <th>Fillers</th>
+	  <th>Action</th>
+	</tr>
+	<TMPL_LOOP name="languages">
+        <tr>
 	  <td><TMPL_VAR name="code"/></td>
 	  <td><TMPL_VAR name="name"/></td>
 	  <td><TMPL_VAR name="voice"/></td>
@@ -48,27 +45,34 @@
 	  <td>
 	    <form action="/languages" method="POST" accept-charset="utf-8" class="inline-form">
 	      <input type="hidden" name="action" value="delete">
-	      <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
 	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
-	      <input type="submit" class="submit-button" id="submit-button" value="Delete">
+	      <input type="submit" class="delete-button" id="delete-button" value="Delete">
 	    </form>
 	    <form action="/languages" accept-charset="utf-8" method="POST" class="inline-form">
 	      <input type="hidden" name="action" value="edit">
-	      <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
 	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
 	      <input type="submit" class="add-button" id="submit-button" value="Edit">
 	    </form>
 	  </td>
 	</tr>
-      </TMPL_LOOP>
-    </table>
-    <center>
-    <form action="/languages" method="POST" accept-charset="utf-8">
-      <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
-      <input hidden id="action" name="action" value="add">
-      <center><input type="submit" value="Add Language" class="add-button"></center>
-    </form>
-    </center>
+	</TMPL_LOOP>
+	<tr>
+	  <td colspan="6" class="button">
+	    <br/><br/>
+	    <form action="/languages" method="POST" accept-charset="utf-8" class="inline-form">
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
+	      <input type="hidden" name="action" value="add">
+	      <input type="submit" value="Add Language" class="add-button"> <button class="add-button" class="close-button" onclick="closeWindow()">Close</button>
+	    </form>
+	    <br/><br/>
+	  </td>
+	</tr>
+      </table>
+    </div>
   </body>
 </html>
-

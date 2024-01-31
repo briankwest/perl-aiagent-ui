@@ -4,41 +4,77 @@
     <title>Languages</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
-    <h2>Edit Language</h2>
-    <form action="/languages" method="POST" accept-charset="utf-8">
-      <table cellpadding="4">
-	<tr>
-	  <td>
-	    <label for="code">Code:</label>
-	    <input id="code" name="code" value="<TMPL_VAR name="code"/>" required><br/>
-	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
-	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
-	    <input hidden id="action" name="action" value="update">
+    <h2>Edit Languages for <TMPL_VAR name="agent_name"/></h2>
+    <div class="container">
+      <form action="/languages" method="POST" accept-charset="utf-8">
+	<table>
+	  <tr>
+	    <th colspan="2">
+	      &nbsp
+	    </th>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="code">Code:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="code" name="code" value="<TMPL_VAR name="code"/>" required><br/>
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
+	      <input type="hidden" name="action" value="update">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
 	    <label for="name">Name:</label>
-	    <input id="name" name="name" value="<TMPL_VAR name="name"/>" required><br/>
-
-    	    <label for="voice">Voice:</label>
-	    <input id="voice" name="voice" value="<TMPL_VAR name="voice">" required><br/>
-
-	    <label for="engine">Engine:</label>
-	    <input id="engine" name="engine" value="<TMPL_VAR name="engine"/>" required><br/>
-
-	    <label for="fillers">Fillers:</label>
-	    <input id="fillers" name="fillers" value="<TMPL_VAR name="fillers"/>"><br/>
-	  <td>
-	</tr>
-      </table><br><br>
-      <center><input type="submit" value="Update"  class="submit-button"></center><br><br>
-    </form>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="name" name="name" value="<TMPL_VAR name="name"/>" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+    	      <label for="voice">Voice:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="voice" name="voice" value="<TMPL_VAR name="voice">" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="engine">Engine:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="engine" name="engine" value="<TMPL_VAR name="engine"/>" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      
+	      <label for="fillers">Fillers:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="fillers" style="width: 600px;" name="fillers" value="<TMPL_VAR name="fillers"/>">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2" class="button">
+	      <br/><br/>
+	      <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Update"  class="submit-button">
+	      <br/><br/>
+	    </td>
+	  </tr>
+	</table>
+      </form>
+    </div>
   </body>
 </html>
 

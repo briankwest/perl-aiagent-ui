@@ -1,60 +1,60 @@
 <!DOCTYPE html>
 <html>
   <head>
-  <title>Messages</title>
-  <link rel="stylesheet" href="/assets/style.css" type="text/css">
-  <link rel="icon" type="image/png" href="/assets/favicon.png">
-  <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+    <title>Messages</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
     function confirmSubmit(event) {
-    var confirmAction = confirm("Are you sure you want to delete this message?");
+	var confirmAction = confirm("Are you sure you want to delete this message?");
 	if (!confirmAction) {
-            event.preventDefault();  // Prevents the default action (form submission) if user cancels
+	    event.preventDefault();  // Prevents the default action (form submission) if user cancels
 	}
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        var buttons = document.querySelectorAll(".submit-button");
-        buttons.forEach(function(button) {
-            button.addEventListener("click", confirmSubmit);
-        });
+	var buttons = document.querySelectorAll(".delete-button");
+	buttons.forEach(function(button) {
+	    button.addEventListener("click", confirmSubmit);
+	});
     });
-  </script>
+    </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
-    <h2>Messages</h2>
-    <table cellpadding="4">
-      <tr>
-	<th align="left">ID</th>
-	<th align="left">Created</th>
-	<th align="left">Convo ID</th>
-	<th align="left">Message</th>
-	<th align="left">Replied</th>
-	<th align="left">Action</th>
-      </tr>
-      <TMPL_LOOP name="table_contents">
-	<tr>
-	  <td><TMPL_VAR name="id"/></td>
-	  <td><TMPL_VAR name="created"/></td>
-	  <td><TMPL_VAR name="convo_id"/></td>
-	  <td><TMPL_VAR name="message"/></td>
-	  <td><TMPL_VAR name="replied"/></td>
-	  <td>
-	    <form action="/messages" method="POST" accept-charset="utf-8">
-	      <input type="hidden" name="action" value="delete">
-	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
-	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
-	      <input type="submit" id="submit-button" class="submit-button" value="Delete">
-	    </form>
-	  </td>
-	</tr>
-      </TMPL_LOOP>
-    </table>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
+      <h2>Messages</h2>
+      <div class="container">
+	<table class="info-table">
+	  <tr>
+	    <th align="left">Created</th>
+	    <th align="left">Conversation ID</th>
+	    <th align="left">Message</th>
+	    <th align="left">Replied</th>
+	    <th align="left">Action</th>
+	  </tr>
+	  <TMPL_LOOP name="table_contents">
+	    <tr>
+	      <td class="created"><TMPL_VAR name="created"/></td>
+	      <td><TMPL_VAR name="convo_id"/></td>
+	      <td><TMPL_VAR name="message"/></td>
+	      <td>
+		<TMPL_IF EXPR="(replied > 0)">
+		  Yes
+		<TMPL_ELSE>
+		    No
+		</TMPL_IF>
+	      <td>
+		<form action="/messages" method="POST" accept-charset="utf-8">
+		  <input type="hidden" name="action" value="delete">
+		  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		  <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+		  <input type="submit" class="delete-button" id="delete-button" value="Delete">
+		</form>
+	      </td>
+	    </tr>
+	  </TMPL_LOOP>
+	</table>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
   </body>
 </html>

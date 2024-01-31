@@ -137,13 +137,15 @@
       </nav>
     </header>
     <h2>Debug</h2>
-    <textarea id="websocket-data" rows="40" cols="150" readonly></textarea><br>
-    <form id="send-cmd" accept-charset="utf-8">
-      <input type="text" size="50" id="message-input" placeholder="Enter command or message">
-    </form><br/>
-    <button type="button" id="disconnect-button">Disconnect</button>
-    <button type="button" id="reconnect-button">Reconnect</button>
-    <button type="button" id="clear-it">Clear</button>
-    Clear on Reconnect:<input type="checkbox" id="clear-on-reconnect" checked> 
+    <center>
+      <textarea id="websocket-data" rows="40" cols="180" readonly></textarea><br>
+      <form id="send-cmd" accept-charset="utf-8">
+	<input type="text" size="50" id="message-input" placeholder="Enter command or message">
+      </form><br/>
+      <button type="button" class="delete-button" id="disconnect-button">Disconnect</button>
+      <button type="button" id="reconnect-button">Reconnect</button>
+      <button type="button" id="clear-it">Clear</button>
+      Clear on Reconnect:<input type="checkbox" id="clear-on-reconnect" checked> 
+    </center>
   </body>
 </html>

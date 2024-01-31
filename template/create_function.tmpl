@@ -4,52 +4,76 @@
     <title>Functions</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
-    <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
-    <h2>Create Function</h2>
-    <form id="functionForm" action="/functions" method="POST" accept-charset="utf-8">
-      <table cellpadding="4">
-	<tr>
-	  <td>
-	    <label for="name">Name:</label>
-	    <input id="name" name="name" required><br/>
-	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
-	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
-	    <input hidden id="action" name="action" value="create">
-	    <label for="purpose">Purpose:</label>
-	    <input id="purpose" name="purpose" required><br/>
-
-	    <label for="active">Active:</label>
-	    <input type="checkbox" id="active" name="active"><br/>
-
-	    <label for="argument">Argument:</label>
-	    <input id="argument" name="argument" required><br/>
-
-	    <label for="code">Code:</label>
-	    <div id="editor" style="height: 600px; width: 800px;"><TMPL_VAR name="code"/></div>
-
-	    <script nonce="<TMPL_VAR name="nonce"/>">
-              var editor = ace.edit("editor");
-              editor.setTheme("ace/theme/monokai");
-              editor.session.setMode("ace/mode/perl");
-	      document.getElementById('functionForm').addEventListener('submit', function() {
-		  document.getElementById('editorContent').value = editor.getValue();
-              });
-	    </script>
-	    <input type="hidden" name="code" id="editorContent">
-	  <td>
-	</tr>
-      </table><br><br>
-      <center><input type="submit" value="Create" class="submit-button"></center><br><br>
-    </form>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
+      <h2>Create Function</h2>
+      <div class="container">
+	<form action="/functions" method="POST" accept-charset="utf-8">
+	  <table>
+	    <tr>
+	      <th colspan="2">
+		&nbsp;
+	      </th>
+	    </tr>
+	    <tr>
+	      <td style="text-align: right">
+		<label for="name">Name:</label>
+	      </td>
+	      <td style="text-align: left">
+		<input id="name" name="name" required>
+		<input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+		<input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		<input type="hidden" name="action" value="create">
+	      </td>
+	    </tr>
+	    <tr>
+	      <td style="text-align: right">
+		<label for="purpose">Purpose:</label>
+	      </td>
+	      <td style="text-align: left">
+		<input id="purpose" name="purpose" required>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td style="text-align: right">
+		<label for="active">Active:</label>
+	      </td>
+	      <td style="text-align: left">
+		<input type="checkbox" id="active" name="active">
+	      </td>
+	    </tr>
+	    <tr>
+	      <td style="text-align: right">
+		<label for="active">Arguments:</label>
+	      </td>
+	      <td style="text-align: left">
+		Added via edit
+	      </td>
+	    </tr>
+	    <tr>
+	      <td style="text-align: right">
+		<label for="active">Code:</label>
+	      </td>
+	      <td style="text-align: left">
+		Added via edit
+	      </td>
+	    </tr>
+	    <tr>
+	      <td colspan="2" class="button">
+		<br/><br/>
+		<button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Create" class="submit-button">
+		<br/><br/>
+	      </td>
+	    </tr>
+	  </table>
+	</form>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
   </body>
 </html>
-

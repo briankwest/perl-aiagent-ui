@@ -4,35 +4,60 @@
     <title>Pronounce</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
-    <h2>Edit Pronounce</h2>
-    <form action="/pronounce" method="POST" accept-charset="utf-8">
-      <table cellpadding="4">
-	<tr>
-	  <td>
-	    <label for="ignore_case">Ignore case:</label>
-	    <input type="checkbox" id="ignore_case" name="ignore_case" <TMPL_VAR name="ignore_case_checked">><br/>
-	    <input hidden id="agent_id" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
-	    <input hidden id="id" name="id" value="<TMPL_VAR name="id"/>">
-	    <input hidden id="action" name="action" value="update">
-	    <label for="replace_this">Replace:</label>
-	    <input id="replace_this" name="replace_this" value="<TMPL_VAR name="replace_this"/>" required><br/>
-
-    	    <label for="replace_with">With:</label>
-	    <input id="replace_with" name="replace_with" value="<TMPL_VAR name="replace_with">" required><br/>
-	  <td>
-	</tr>
-      </table><br><br>
-      <center><input type="submit" value="Update"  class="submit-button"></center><br><br>
-    </form>
+    <h2>Edit Pronounce for <TMPL_VAR name="agent_name"/></h2>
+    <div class="container">
+      <form action="/pronounce" method="POST" accept-charset="utf-8">
+	<table>
+	  <tr>
+	    <th colspan="2">
+	      &nbsp
+	    </th>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="ignore_case">Ignore case:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="ignore_case" name="ignore_case" <TMPL_VAR name="ignore_case_checked">>
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
+	      <input type="hidden" name="action" value="update">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="replace_this">Replace:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="replace_this" name="replace_this" value="<TMPL_VAR name="replace_this"/>" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+    	      <label for="replace_with">With:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="replace_with" name="replace_with" value="<TMPL_VAR name="replace_with">" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2" class="button">
+	      <br/><br/>
+	      <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Update"  class="submit-button">
+	      <br/><br/>
+	    </td>
+	  </tr>
+	</table>
+      </form>
+    </div>
   </body>
 </html>
 

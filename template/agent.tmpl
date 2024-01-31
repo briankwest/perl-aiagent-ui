@@ -1,69 +1,49 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Converstations</title>
-  <link rel="stylesheet" href="/assets/style.css" type="text/css">
-  <link rel="icon" type="image/png" href="/assets/favicon.png">
-</head>
-<body>
-  <header>
-    <nav>
-      <TMPL_LOOP name="nav">
-	<a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-      </TMPL_LOOP>
-    </nav>
-  </header>
-  <h2>Conversations</h2>
-  <table>
-    <tr>
-      <td style="text-align: right;">
-	<TMPL_IF name="prev_url">
-	  <a href="<TMPL_VAR name="prev_url"/>">< Prev</a>
-	</TMPL_IF>
-      </td>
-      <td style="text-align: left;">
-	<TMPL_IF name="next_url">
-	  <a href="<TMPL_VAR name="next_url"/>">Next ></a>
-	</TMPL_IF>
-      </td>
-    </tr>
-  </table>
-  <div style="text-align: center;">
-    <table border="1" style="border-collapse: collapse; width: 90%; margin: auto;">
-      <tr>
-	<th>Created</th>
-	<th>Name</th>
-	<th>Number</th>
-	<th>Summary</th>
-      </tr>
-      <TMPL_LOOP name="table_contents">
-	<tr>
-	  <td><TMPL_VAR name="created"/></td>
-	  <td><a href="/agent?id=<TMPL_VAR name="id"/>&agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="caller_id_name"/></a></td>
-	  <td><TMPL_VAR name="caller_id_number"/></td>
-	  <td><TMPL_VAR name="summary"/></td>
-	</tr>
-      </TMPL_LOOP>
-    </table>
-  </div>
-  <table>
-    <tr>
-      <td style="text-align: right;">
-	<TMPL_IF name="prev_url">
-	  <a href="<TMPL_VAR name="prev_url"/>">< Prev</a>
-	</TMPL_IF>
-      </td>
-      <td style="text-align: left;">
-	<TMPL_IF name="next_url">
-	  <a href="<TMPL_VAR name="next_url"/>">Next ></a>
-	</TMPL_IF>
-      </td>
-    </tr>
-  </table>
-  <footer>
-    <center>
-      <p>Contact us at <a href="mailto:brian@signalwire.com">Contact</a>.</p>
-    </center>
-  </footer>
-</body>
+  <head>
+    <title>Converstations</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+  </head>
+  <body>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
+      <h2>Conversations</h2>
+      <div class="container">
+	<table>
+	  <td colspan="2" class="prevurl">
+	    &nbsp;<TMPL_IF name="prev_url"><a href="<TMPL_VAR name="prev_url"/>">< Prev</a></TMPL_IF>
+          </td>
+	  <td colspan="2" class="nexturl">
+	    <TMPL_IF name="next_url"><a href="<TMPL_VAR name="next_url"/>">Next ></a></TMPL_IF>&nbsp;
+	  </td>
+	</table>
+	<table class="info-table">
+	  <tr>
+	    <th>Created</th>
+	    <th>Name</th>
+	    <th>Number</th>
+	    <th>Summary</th>
+	  </tr>
+	  <TMPL_LOOP name="table_contents">
+	    <tr>
+	      <td class="created"><TMPL_VAR name="created"/></td>
+	      <td class="name"><a href="/agent?id=<TMPL_VAR name="id"/>&agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="caller_id_name"/></a></td>
+	      <td class="number"><TMPL_VAR name="caller_id_number"/></td>
+	      <td><TMPL_VAR name="summary"/></td>
+	    </tr>
+	  </TMPL_LOOP>
+	</table>
+	<table>
+	  <tr>
+	    <td colspan="2" class="prevurl">
+	      &nbsp;<TMPL_IF name="prev_url"><a href="<TMPL_VAR name="prev_url"/>">< Prev</a></TMPL_IF>
+            </td>
+	    <td colspan="2" class="nexturl">
+	      <TMPL_IF name="next_url"><a href="<TMPL_VAR name="next_url"/>">Next ></a></TMPL_IF>&nbsp;
+	    </td>
+	  </tr>
+	</table>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
+  </body>
 </html>

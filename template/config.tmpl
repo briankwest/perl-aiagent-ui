@@ -4,55 +4,113 @@
     <title>Configuration</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
-</head>
-<body>
-  <header>
-    <nav>
-      <TMPL_LOOP name="nav">
-	<a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-      </TMPL_LOOP>
-    </nav>
-  </header>
-  <h2>Configuration</h2>
-  <form action="<TMPL_VAR name="url"/>?agent_id=<TMPL_VAR name="agent_id"/>" method="POST" accept-charset="utf-8">
-  <center>
-    <table>
-      <tr>
-	<th>Setting</th>
-	<th>Value</th>
-      </tr>
-      <tr>
-	<td>Voice Webhook:</td>
-	<td><input type="text" size="100" name="voice" value="<TMPL_VAR name="swml_url">" readonly></td>
-      </tr>
-      <tr>
-	<td>Messaging Webhook</td>
-	<td><input type="text" size="100" name="message" value="<TMPL_VAR name="laml_url">" readonly></td>
-      </tr>
-    </table>
-  </center>
-  <br><br>
-  <table>
-    <tr>
-      <th>Setting</th>
-      <th>Value</th>
-    </tr>
-    <TMPL_LOOP name="controls">
-      <tr>
-	<td><TMPL_VAR name="var"/></td>
-	<td><input type="checkbox" name="<TMPL_VAR name="var"/>" value="<TMPL_VAR name="val"/>" <TMPL_VAR name="checked"/>><td>
-      </tr>
-    </TMPL_LOOP>
-    
-    <TMPL_LOOP name="fields">
-      <tr>
-	<td><TMPL_VAR name="var"/></td>
-	<td><input type="text" size="100" name="<TMPL_VAR name="var"/>" value="<TMPL_VAR name="val"/>"><td>
-      </tr>
-    </TMPL_LOOP>
-    </table><br>
-    <center><input type="submit" value="save"  class="submit-button"></center><br><br>
-  </form>
-</body>
-</html>
+    <script nonce="<TMPL_VAR name="nonce"/>">
+    document.addEventListener('DOMContentLoaded', function () {
+	document.getElementById('submitBtn').addEventListener('click', function () {
+	    event.preventDefault();
+	    const jsonData = {
+		"params": {
+		    "device": {
+			"type": "phone",
+			"params": {
+			    "headers": [],
+			    "to_number": "+19185551212",
+			    "from_number": "+19185551212"
+			}
+		    },
+		    "call_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
+		    "node_id": "936dcdfc-3fce-4d06-a5d0-c0a0ff95d21b@us-east",
+		    "end_time": 0,
+		    "direction": "inbound",
+		    "call_state": "created",
+		    "segment_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
+		    "start_time": 1706206007199,
+		    "answer_time": 0
+		},
+		"space_id": "5bb2200d-3662-4f4d-8a8b-d7806946711c",
+		"timestamp": 1706206007.452151,
+		"event_type": "calling.call.state",
+		"project_id": "5c606b2d-bc2b-4081-9209-d0ca6712085d"
+	    };
 
+	    const xhr = new XMLHttpRequest();
+	    const url = '<TMPL_VAR name="swml_url">';
+
+	    xhr.open('POST', url, true);
+	    xhr.setRequestHeader('Content-Type', 'application/json');
+
+	    xhr.onreadystatechange = function () {
+		if (xhr.readyState === 4) {
+		    if (xhr.status === 200) {
+			const responseJson = JSON.parse(xhr.responseText);
+			downloadJSON(responseJson);
+		    } else {
+			console.error('Error:', xhr.statusText);
+		    }
+		}
+	    };
+	    xhr.send(JSON.stringify(jsonData));
+	});
+
+	function downloadJSON(data) {
+	    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+	    const url = window.URL.createObjectURL(jsonBlob);
+	    const a = document.createElement('a');
+	    a.href = url;
+	    a.download = 'agent_<TMPL_VAR name="agent_id">.json';
+	    a.click();
+	    window.URL.revokeObjectURL(url);
+	}
+    });
+    </script>
+  </head>
+  <body>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
+      <h2>Configuration</h2>
+      <form action="<TMPL_VAR name="url"/>?agent_id=<TMPL_VAR name="agent_id"/>" method="POST" accept-charset="utf-8">
+	<div class="container">
+	  <table class="info-table">
+	    <tr>
+	      <th>Setting</th>
+	      <th>Value</th>
+	    </tr>
+	    <tr>
+	      <td>Voice Webhook:</td>
+	      <td>
+		<input type="text" size="80" name="voice" value="<TMPL_VAR name="swml_url">" readonly>
+		<button class="submit-button" id="submitBtn">Download SWML</button>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td>Messaging Webhook</td>
+	      <td><input type="text" size="80" name="message" value="<TMPL_VAR name="laml_url">" readonly></td>
+	    </tr>
+	    <tr>
+	      <th>Setting</th>
+	      <th>Value</th>
+	    </tr>
+	    <TMPL_LOOP name="controls">
+	      <tr>
+		<td><TMPL_VAR name="var"/></td>
+		<td><input type="checkbox" name="<TMPL_VAR name="var"/>" value="<TMPL_VAR name="val"/>" <TMPL_VAR name="checked"/>><td>
+	      </tr>
+	    </TMPL_LOOP>
+
+	    <TMPL_LOOP name="fields">
+	      <tr>
+		<td><TMPL_VAR name="var"/></td>
+		<td><input type="text" size="80" name="<TMPL_VAR name="var"/>" value="<TMPL_VAR name="val"/>"><td>
+	      </tr>
+	    </TMPL_LOOP>
+	    <tr>
+	      <td colspan="2" class="button">
+		<br/><br/>
+		<TMPL_IF name="is_admin"><input type="submit" value="Save" class="submit-button"></TMPL_IF>
+	      <td>
+	    </tr>
+	  </table>
+	</div>
+      </form>
+      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
+  </body>
+</html>

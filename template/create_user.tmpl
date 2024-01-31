@@ -4,45 +4,101 @@
     <title>Create User</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
     <h2>Create User</h2>
-    <form action="/users" method="POST" accept-charset="utf-8">
-      <table cellpadding="4">
-	<tr>
-	  <td>
-	    <!-- (username, password, first_name, last_name, email, phone_number, totp_enable, is_admin) -->
-	    <label for="username">Username:</label>
-	    <input id="username" name="username" required><br/>
-	    <input hidden id="action" name="action" value="create">
-	    <label for="password">Password:</label>
-	    <input type="password" id="password" name="password" required><br/>
-    
-	    <label for="first_name">Firstname:</label>
-	    <input id="first_name" name="first_name" required><br/>
-	    <label for="last_name">Lastname:</label>
-	    <input id="last_name" name="last_name" required><br/>
-	    <label for="email">Email:</label>
-	    <input id="email" name="email" required><br/>
-	    <label for="phone_number">Phone:</label>
-	    <input id="phone_number" name="phone_number" required><br/>
-
-	    <label for="is_admin">Admin:</label>
-	    <input type="checkbox" id="is_admin" name="is_admin"><br/>
-	    <label for="totp_enable">TOTP:</label>
-	    <input type="checkbox" id="totp_enabled" name="totp_enabled"><br/>
-	  <td>
-	</tr>
-      </table><br><br>
-      <center><input type="submit" value="Create" class="submit-button"></center><br><br>
-    </form>
+    <div class="container">
+      <form action="/users" method="POST" accept-charset="utf-8">
+	<table>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="username">Username:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="username" autocomplete="username" name="username" required>
+	      <input type="hidden" name="action" value="create">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="password">Password:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="password" autocomplete="new-password" id="password" name="password" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="first_name">Firstname:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="first_name" name="first_name" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="last_name">Lastname:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="last_name" name="last_name" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="email">Email:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="email" name="email" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="phone_number">Phone:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="phone_number" name="phone_number" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="is_admin">Admin:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="is_admin" name="is_admin">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="is_viewer">Viewer:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="is_viewer" name="is_viewer">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="totp_enable">TOTP:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="totp_enabled" name="totp_enabled">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2" class="button">
+	      <br/><br/>
+	      <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Create" class="submit-button">
+	    </td>
+	  </tr>
+	</table>
+      </form>
+    </div>
+    <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
   </body>
 </html>
 

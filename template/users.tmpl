@@ -4,7 +4,7 @@
     <title>Users</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
-  <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+    <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
     function confirmSubmit(event) {
     var confirmAction = confirm("Are you sure you want to delete this context?");
 	if (!confirmAction) {
@@ -13,7 +13,7 @@
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        var buttons = document.querySelectorAll(".submit-button");
+        var buttons = document.querySelectorAll(".delete-button");
         buttons.forEach(function(button) {
             button.addEventListener("click", confirmSubmit);
         });
@@ -21,49 +21,51 @@
   </script>
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
     <h2>Users</h2>
-    <table>
-      <tr>
-	<th>Username</th>
-	<th>Firstname</th>
-	<th>Lastname</th>
-	<th>Admin</th>
-	<th>Action</th>
-      </tr>
-      <TMPL_LOOP name="users">
+    <div class="container">
+      <table class="info-table">
 	<tr>
-	  <td><TMPL_VAR name="username"/></td>
-	  <td><TMPL_VAR name="first_name"/></td>
-	  <td><TMPL_VAR name="last_name"/></td>
-	  <td><TMPL_VAR name="is_admin"/></td>
-	  <td>
-	    <form action="/users" method="POST" accept-charset="utf-8" class="inline-form">
-	      <input type="hidden" name="action" value="delete">
-	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
-	      <input type="submit" class="submit-button" id="submit-button" value="Delete">
-	    </form>
-	    <form action="/users" method="POST" accept-charset="utf-8" class="inline-form">
-	      <input type="hidden" name="action" value="edit">
-	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
-	      <input type="submit" class="add-button" id="submit-button" value="Edit">
+	  <th>Username</th>
+	  <th>Firstname</th>
+	  <th>Lastname</th>
+	  <th>Admin</th>
+	  <th>Viewer</th>
+	  <th>Action</th>
+	</tr>
+	<TMPL_LOOP name="users">
+	  <tr>
+	    <td><TMPL_VAR name="username"/></td>
+	    <td><TMPL_VAR name="first_name"/></td>
+	    <td><TMPL_VAR name="last_name"/></td>
+	    <td><TMPL_VAR name="is_admin"/></td>
+	    <td><TMPL_VAR name="is_viewer"/></td>
+	    <td>
+	      <form action="/users" method="POST" accept-charset="utf-8" class="inline-form">
+		<input type="hidden" name="action" value="delete">
+		<input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		<input type="submit" class="delete-button" id="delete-button" value="Delete">
+	      </form>
+	      <form action="/users" method="POST" accept-charset="utf-8" class="inline-form">
+		<input type="hidden" name="action" value="edit">
+		<input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		<input type="submit" class="add-button" id="submit-button" value="Edit">
+	      </form>
+	    </td>
+	  </tr>
+	</TMPL_LOOP>
+	<tr>
+	  <td colspan="6" class="button">
+	    <br/><br/>
+	    <form action="/users" method="POST" accept-charset="utf-8">
+	      <input type="hidden" name="action" value="add">
+	      <input type="submit" value="Add User" class="add-button">
 	    </form>
 	  </td>
 	</tr>
-      </TMPL_LOOP>
-    </table>
-    </center>
-    <form action="/users" method="POST" accept-charset="utf-8">
-      <input hidden id="action" name="action" value="add">
-      <center><input type="submit" value="Add User" class="add-button"></center>
-    </form>
-    </center>
+      </table>
+    </div>
+    <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
   </body>
 </html>
 

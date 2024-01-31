@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Hints</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
+  </head>
+  <body>
+    <h2>Edit Hint for <TMPL_VAR name="agent_name"/></h2>
+    <div class="container">
+      <form action="/hints" method="POST" accept-charset="utf-8">
+	<table>
+	  <tr>
+	    <th colspan="2">
+	      &nbsp;
+	    </th>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="hint">Hint:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="hint" name="hint" value="<TMPL_VAR name="hint"/>" required>
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
+	      <input type="hidden" name="action" value="update">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2" class="button">
+	      <br/><br>
+	      <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Update" class="submit-button">
+	      <br/><br>
+	    </td>
+	  </tr>
+	</table>
+      </form>
+    </div>
+  </body>
+</html>
+

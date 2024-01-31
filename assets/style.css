@@ -3,43 +3,140 @@
     margin-right: 10px;
 }
 
-.center-table {
-    margin-left: auto;
-    margin-right: auto;
-}
-
-body {
+html, body {
+    height: 100%;
+    margin: 0;
     font-family: Tahoma, Arial, sans-serif;
     color: #ffffff;
     background-color: #222222;
 }
 
-left-col {
-    width: 20%;
+.container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
-.right-col {
-    width: 80%;
-}
- 
-table {
-    width: 90%;
-    margin: 0 auto;
-    border: none;
-    border-spacing: 0px;
-    margin-left: auto;
-    margin-right: auto;
-    border-collapse: collapse;
+header {
+    background-color: #000000;
+    text-align: center;
+    text-color: #ffffff;
 }
 
-table th, table td {
-    border: none;
+footer {
+    margin-top: 20px;
+    width: 100%;
+    text-color: #000000;
+    text-align: center;
+    padding: 10px 0;
+}
+
+.login-error {
+    color: red;
+}
+
+.login-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  margin: 0;
+}
+
+.login-container {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+td .login-label {
+    padding: 20px;
+    border-radius: 5px;
+    margin-top: 20px;
+    align-items: right;
+    text-align: right;
+    text-color: #ffffff;
+    background-color: #222222;
+    
+}
+
+td login-input {
+    padding: 20px;
+    border-radius: 5px;
+    margin-top: 20px;
+    align-items: left;
+    text-align: left;
+    text-color: #ffffff;
+    background-color: #222222;
+}
+
+.prevurl {
     text-align: left;
 }
 
-table td {
+.prevurl a, .nexturl a {
+    text-decoration: none;
+}
+
+.nexturl {
+    text-align: right;
+}
+
+table {
+    width: 90%;
+    border-collapse: collapse;
+}
+
+th {
+    text-align: center;
     padding: 10px;
-    min-width: 100px;
+}
+
+.info-table tr:nth-child(even):not(.th) {
+  background-color: #484848;
+}
+
+.info-table tr:nth-child(odd):not(:last-child):not(.th) {
+  background-color: #222222;
+}
+
+/* tr:nth-child(even):not(.th) {
+    background-color: #484848;
+}
+
+tr:nth-child(odd):not(:last-child):not(.th) {
+    background-color: #222222;
+}
+*/
+
+td {
+    padding: 10px;
+}
+
+.button {
+    text-align: center;
+    align-items: center;
+}
+
+td.name {
+    white-space: nowrap;
+}
+
+td.phone-number {
+    white-space: nowrap;
+}
+
+td.action {
+    white-space: nowrap;
+    align-items: right;
+}
+
+th.role {
+    width: 100px;
+}
+
+td.created {
+    white-space: nowrap;
 }
 
 h1, p, a {
@@ -53,7 +150,7 @@ h2 {
 
 a {
     text-decoration: none;
-    color: #50D2E9; /* If there's a conflict, choose one color */
+    color: #50D2E9; 
 }
 
 a:hover {
@@ -110,6 +207,7 @@ button:hover, .submit-button:hover {
 
 header {
     background-color: #f2f2f2;
+    text-color: #000000;
     padding: 10px;
     text-align: center;
 }
@@ -118,26 +216,6 @@ header nav a {
     margin: 0 10px;
     text-decoration: none;
     color: #333;
-}
-
-.collapsible {
-    cursor: pointer;
-    text-align: center;
-    width: auto;
-    display: inline-block;
-}
-
-.content {
-    display: none;
-    overflow: hidden;
-    background-color: #222222;
-    margin: 0 auto;
-}
-
-.copy-button {
-    text-align: center;
-    width: auto;
-    cursor: pointer;
 }
 
 .system {
@@ -156,18 +234,4 @@ header nav a {
     background-color: #CD00C4;
 }
 
-.center-table {
-    margin-left: auto;
-    margin-right: auto;
-    border-collapse: collapse;
-}
 
-/* Optional: additional styling for the table */
-.center-table, .center-table th, .center-table td {
-    border: 0px;
-}
-
-.center-table th, .center-table td {
-    padding: 8px;
-    text-align: left;
-}

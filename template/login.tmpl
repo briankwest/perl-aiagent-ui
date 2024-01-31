@@ -5,25 +5,47 @@
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
   </head>
-  <body>
-    <header>
-      <nav>
-	  <a href="<TMPL_VAR name="path"/>">SignalWire AI Agent</a>
-      </nav>
-    </header>
-    <h2>Login</h2>
-    <TMPL_IF EXPR="(error > 0)">
-      <center><bold><font color="red">Invalid username or password</font></bold></center>
-    </TMPL_IF>
-    <form action="/login" method="POST" accept-charset="utf-8">
-      <center>
-	<label for="username">Username:</label>
-	<input id="username" name="username" required><br/>
-	<label for="password">Password:</label>
-	<input type="password" id="password" name="password" required><br/>
-      <br><br>
-      <center><input type="submit" value="Login" class="add-button"></center><br><br>
-    </form>
+  <body class="login-body">
+    <TMPL_INCLUDE NAME="/app/template/login_header.tmpl">
+
+      <div class="login-container">
+	<form action="/login" method="POST" accept-charset="utf-8">
+	  <table>
+	    <tr>
+	      <td colspan="2">
+		<TMPL_IF EXPR="(error > 0)">
+		  <strong class="login-error">Invalid username or password</strong>
+		</TMPL_IF>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td class="login-label">
+		<label for="username">Username:</label>
+	      </td>
+	      <td class="login-input">
+		<input id="username" autocomplete="username" name="username" required>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td class="login-label">
+		<label for="password">Password:</label>
+	      </td>
+	      <td class="login-input">
+		<input type="password" autocomplete="current-password" id="password" name="password" required>
+		<TMPL_IF name="redirect">
+		  <input type="hidden" id="redirect" name="redirect" value="<TMPL_VAR name="redirect">">
+		</TMPL_IF>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td colspan="2" class="button">
+		<br/><br/><input type="submit" value="Login" class="add-button">
+	      </td>
+	    </tr>
+	  </table>
+	</form>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/login_footer.tmpl">
   </body>
 </html>
 

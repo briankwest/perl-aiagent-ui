@@ -6,46 +6,41 @@
     <link rel="icon" type="image/png" href="/assets/favicon.png">
   </head>
   <body>
-    <header>
-      <nav>
-	<TMPL_LOOP name="nav">
-	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
-	</TMPL_LOOP>
-      </nav>
-    </header>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
     <h2>Conversation Details</h2>
-    <div style="text-align: center;">
-      <table border="1" style="border-collapse: collapse; width: 90%; margin: auto;">
+    <div class="container">
+      <table class="info-table">
 	<tr>
-          <td style="width: 50%; text-align: left;">
-	    <table border="1">
+          <td>
+	    <table>
 	      <tr>
-		<td>ID</td>
-		<td><TMPL_VAR name="call_id"/></td>
+		<td style="text-align: right">ID:</td>
+		<td style="text-align: left"><TMPL_VAR name="call_id"/></td>
 	      </tr>
 	      <tr>
-		<td>Start Date</td>
-		<td><TMPL_VAR name="call_start_date"/></td>
+		<td style="text-align: right">Start Date:</td>
+		<td style="text-align: left"><TMPL_VAR name="call_start_date"/></td>
 	      </tr>
 	      <tr>
-		<td>Name</td>
-		<td><TMPL_VAR name="caller_id_name"/></td>
+		<td style="text-align: right">Name:</td>
+		<td style="text-align: left"><TMPL_VAR name="caller_id_name"/></td>
 	      </tr>
 	      <tr>
-		<td>Number</td>
-		<td><TMPL_VAR name="caller_id_number"/></td>
+		<td style="text-align: right">Number:</td>
+		<td style="text-align: left"><TMPL_VAR name="caller_id_number"/></td>
 	      </tr>
 	      <tr>
-		<td>Input Tokens</td>
-		<td><TMPL_VAR name="total_input_tokens"/></td>
+		<td style="text-align: right">Input Tokens:</td>
+		<td style="text-align: left"><TMPL_VAR name="total_input_tokens"/></td>
 	      </tr>
 	      <tr>
-		<td>Output Tokens</td>
-		<td><TMPL_VAR name="total_output_tokens"/></td>
+		<td style="text-align: right">Output Tokens:</td>
+		<td style="text-align: left"><TMPL_VAR name="total_output_tokens"/></td>
 	      </tr>
 	    </table>
 	  </td>
-          <td style="width: 50%; align: center;">
+	  <td style="text-align: right">Recording:</td>
+          <td style="text-align: left">
 	    <TMPL_IF EXPR="record_call_url">
 	      <audio src="<TMPL_VAR name='record_call_url'/>" crossorigin="anonymous" controls></audio>
 	    </TMPL_IF>
@@ -53,70 +48,65 @@
 	</tr>
       </table>
     </div>
-  <table>
-    <tr>
-      <td style="text-align: right;">
-	<TMPL_IF name="prev_text">
-	  <a href="<TMPL_VAR name="prev_id"/>" class="button-style"><TMPL_VAR name="prev_text"/></a>
-	</TMPL_IF>
-      </td>
-      <td style="text-align: left;">
-	<TMPL_IF name="next_text">
-	  <a href="<TMPL_VAR name="next_id"/>" class="button-style"><TMPL_VAR name="next_text"/>
-	</TMPL_IF>
-      </td>
-    </tr>
-  </table>
-    <table cellpadding="0">
-      <tr>
-	<th>Role</th>
-	<th>Content</th>
-      </tr>
-      <TMPL_LOOP name="call_log">
-	<TMPL_IF expr="role eq 'system'">
-          <tr class="system">
-	</TMPL_IF>
-	<TMPL_IF expr="role eq 'assistant'">
+    <div class="container">
+      <table>
+	<tr>
+	  <td class="prevurl">
+	    <TMPL_IF name="prev_text">
+	      <a href="<TMPL_VAR name="prev_id"/>" class="button-style"><TMPL_VAR name="prev_text"/></a>
+	    </TMPL_IF>
+	  </td>
+	  <td class="nexturl">
+	    <TMPL_IF name="next_text">
+	      <a href="<TMPL_VAR name="next_id"/>" class="button-style"><TMPL_VAR name="next_text"/>
+	    </TMPL_IF>
+	  </td>
+	</tr>
+	<tr>
+	  <th class="role">Role</th>
+	  <th>Content</th>
+	</tr>
+	<TMPL_LOOP name="call_log">
+	  <TMPL_IF expr="role eq 'system'">
+            <tr class="system">
+	  </TMPL_IF>
+	  <TMPL_IF expr="role eq 'assistant'">
 	  <tr class="assistant">
-	</TMPL_IF>
-	<TMPL_IF expr="role eq 'user'">
-	  <tr class="user">
-	</TMPL_IF>
-	<TMPL_IF expr="role eq 'function'">
-	  <tr class="function">
-	</TMPL_IF>
-	<td><TMPL_VAR name="role"/></td>
-	<td><TMPL_VAR name="content"/></td>
-        </tr>
-       </TMPL_LOOP>
-       <br/><br/>
-        <tr>
-        <th>Function</th>
-        <th>Arguments</th>
-        </tr>
-	<TMPL_LOOP name="swaig_log">
-	  <tr class="system">
-	    <td><TMPL_VAR name="command_name"/></td>
-	    <td><TMPL_VAR name="command_arg"/></td>
+	  </TMPL_IF>
+	  <TMPL_IF expr="role eq 'user'">
+	    <tr class="user">
+	  </TMPL_IF>
+	  <TMPL_IF expr="role eq 'function'">
+	    <tr class="function">
+	  </TMPL_IF>
+	  <td><TMPL_VAR name="role"/></td>
+	  <td><TMPL_VAR name="content"/></td>
+          </tr>
+          </TMPL_LOOP>
+          <tr>
+            <th>Function</th>
+            <th>Arguments</th>
+          </tr>
+	  <TMPL_LOOP name="swaig_log">
+	    <tr class="system">
+	      <td><TMPL_VAR name="command_name"/></td>
+	      <td><TMPL_VAR name="command_arg"/></td>
+	    </tr>
+	  </TMPL_LOOP>
+	  <tr>
+	    <td class="prevurl">
+	      <TMPL_IF name="prev_text">
+		<a href="<TMPL_VAR name="prev_id"/>" class="button-style"><TMPL_VAR name="prev_text"/></a>
+	      </TMPL_IF>
+	    </td>
+	    <td class="nexturl">
+	      <TMPL_IF name="next_text">
+		<a href="<TMPL_VAR name="next_id"/>" class="button-style"><TMPL_VAR name="next_text"/>
+	      </TMPL_IF>
+	    </td>
 	  </tr>
-	</TMPL_LOOP>
-     </table>
-     <table>
-       <tr>
-	 <td style="text-align: right;">
-	   <TMPL_IF name="prev_text">
-	     <a href="<TMPL_VAR name="prev_id"/>" class="button-style"><TMPL_VAR name="prev_text"/></a>
-	   </TMPL_IF>
-	 </td>
-	 <td style="text-align: left;">
-	   <TMPL_IF name="next_text">
-	     <a href="<TMPL_VAR name="next_id"/>" class="button-style"><TMPL_VAR name="next_text"/>
-	   </TMPL_IF>
-	 </td>
-       </tr>
-     </table>
-     <br/>
-     <footer>
-     </footer>
-</body>
+	</table>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
+  </body>
 </html>

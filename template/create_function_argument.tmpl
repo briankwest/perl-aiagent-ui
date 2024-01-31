@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Function Argument</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
+  <body>
+    <h2>Create Function Argument for <TMPL_VAR name="function_name"/></h2>
+    <div class="container">
+      <form action="/functionargs" method="POST" accept-charset="utf-8">
+	<table>
+	  <th>
+	    <td colspan="2" style="text-align: center">
+	      &nbsp;
+	    </td>
+	  </th>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="name">Name:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="name" name="name" required>
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <input type="hidden" name="function_id" value="<TMPL_VAR name="function_id"/>">
+	      <input type="hidden" name="function_name" value="<TMPL_VAR name="function_name"/>">
+	      <input type="hidden" name="action" value="create">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="type">Type:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="type" style="width: 400px;" name="type" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="description">Description:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="description" style="width: 500px;" name="description" required>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="active">Active:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="active" name="active">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2" style="button">
+	      <br/><br/>
+	      <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Create" class="submit-button">
+	      <br/><br/>
+	    </td>
+	  </tr>
+	</table>
+      </form>
+    </div>
+  </body>
+</html>
+

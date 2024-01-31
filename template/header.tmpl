@@ -1,7 +1,9 @@
-<nav>
-<TMPL_LOOP name="nav">
-      <a href="<TMPL_VAR name="page_path"/>"><TMPL_VAR name="page_name"/></a>
-</TMPL_LOOP>
-</nav>
+    <header>
+      <nav>
+	<TMPL_LOOP name="nav">
+	  <a href="<TMPL_VAR name="path"/>?agent_id=<TMPL_VAR name="agent_id"/>"><TMPL_VAR name="name"/></a>
+	</TMPL_LOOP>
+      </nav>
+    </header>
 
-
+    
