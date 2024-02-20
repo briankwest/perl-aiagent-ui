@@ -16,7 +16,6 @@ use Plack::App::Directory;
 use Plack::App::WebSocket;
 use Plack::Session::Store::DBI;
 use Plack::Middleware::Debug;
-use Twiggy::Server;
 
 # SignalWire Perl Helper Library
 use SignalWire::ML;
@@ -35,6 +34,7 @@ use MIME::Base64;
 use Crypt::URandom;
 use File::Slurp;
 use URI::Escape qw(uri_escape);
+use List::Util qw(any);
 use UUID 'uuid';
 use Data::Dumper;
 use DateTime;
@@ -60,22 +60,22 @@ my $data_sql = {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_function ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, name TEXT, purpose TEXT, code TEXT, active BOOLEAN DEFAULT TRUE ) )
     },
     ai_function_argument => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_function_argument ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, function_id INTEGER REFERENCES ai_function(id) ON DELETE CASCADE, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT DEFAULT 'string',  description TEXT, active BOOLEAN DEFAULT TRUE, UNIQUE (agent_id, function_id, name) ) )
+	create => qq( CREATE TABLE IF NOT EXISTS ai_function_argument ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, function_id INTEGER REFERENCES ai_function(id) ON DELETE CASCADE, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT DEFAULT 'string',  description TEXT, active BOOLEAN DEFAULT TRUE, required BOOLEAN DEFAULT FALSE, UNIQUE (agent_id, function_id, name) ) )
     },
     ai_hints => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_hints ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, hint TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
     },
     ai_language => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_language ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, code TEXT, name TEXT, voice TEXT, engine TEXT, fillers TEXT ) )
+	create => qq( CREATE TABLE IF NOT EXISTS ai_language ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, code TEXT, name TEXT, voice TEXT, engine TEXT, fillers TEXT, language_order INTEGER NOT NULL DEFAULT 0 ) )
     },
     ai_messages => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_messages ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, call_id TEXT, convo_id TEXT, message TEXT, replied BOOLEAN DEFAULT FALSE, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
     },
-    ai_post => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_post ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, data JSONB, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
+    ai_post_prompt => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_post_prompt ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, data JSONB, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
     },
     ai_prompt => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_prompt ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prompt TEXT, post_prompt TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
+	create => qq( CREATE TABLE IF NOT EXISTS ai_prompt ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prompt TEXT, post_prompt TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, UNIQUE(agent_id) ) )
     },
     ai_pronounce => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_pronounce ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ignore_case BOOLEAN DEFAULT FALSE, replace_this TEXT, replace_with TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
@@ -83,13 +83,100 @@ my $data_sql = {
     ai_summary => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_summary ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, convo_id TEXT, summary TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
     },
+    ai_features => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_features ( id SERIAL PRIMARY KEY, created TIMESTAMP NOT NULL, description TEXT, code TEXT ) )
+    },
+    ai_feature_toggles => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_feature_toggles ( id SERIAL PRIMARY KEY, toggle TEXT NOT NULL UNIQUE, description TEXT, toggle_order INT NOT NULL DEFAULT 0, feature_id INTEGER REFERENCES ai_features(id) ON DELETE CASCADE ) ) 
+    },	
+    ai_feature_strings => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_feature_strings ( id SERIAL PRIMARY KEY, string TEXT NOT NULL UNIQUE, description TEXT, string_order INT NOT NULL DEFAULT 0, required BOOLEAN NOT NULL, feature_id INTEGER REFERENCES ai_features(id) ON DELETE CASCADE ) ) 
+    },
     ai_users => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_users ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, first_name VARCHAR(255), last_name VARCHAR(255), email VARCHAR(255) UNIQUE, phone_number VARCHAR(20), totp_secret VARCHAR(255), totp_enabled BOOLEAN DEFAULT false, is_admin BOOLEAN DEFAULT false, is_viewer BOOLEAN DEFAULT false ) )
     },
-    sessions => {
-	create => qq( CREATE TABLE IF NOT EXISTS sessions ( id CHAR(72) PRIMARY KEY, session_data TEXT, expires INTEGER ) ),
+    ai_user_roles => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_user_roles ( id SERIAL PRIMARY KEY, user_id INT NOT NULL, name VARCHAR(255) NOT NULL, description VARCHAR(255) NOT NULL, FOREIGN KEY (user_id) REFERENCES ai_users(id) ON DELETE CASCADE, CONSTRAINT unique_user_role_name UNIQUE (user_id, name) ) )
+    },
+    ai_password_reset => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_password_reset ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, user_id INTEGER REFERENCES ai_users(id) ON DELETE CASCADE, token VARCHAR(255) NOT NULL ) )
+    },
+    ai_steps => {
+	create => qq( CREATE TABLE IF NOT EXISTS ai_steps ( id SERIAL PRIMARY KEY, ai_step_pattern TEXT NOT NULL, toggle_function TEXT, custom_action TEXT, ai_step_response TEXT NOT NULL, ai_step_b2b_functions BOOLEAN NOT NULL, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
+    },
+    default_admin_user => {
+	create => qq( INSERT INTO ai_users (username, password, first_name, last_name, email, phone_number, totp_enabled, is_admin, is_viewer) VALUES ('admin', '\$2b\$12\$bCbkTUnxSiHDPCfDWUWzP.1qPZKVPWI59Tnzry0AcuKX7e5tmF6pu', 'Admin', 'User', 'admin\@example.com', '+10000000000', false, true, false) ON CONFLICT (username) DO NOTHING )
     }
 };
+
+my %role_names = (
+    admin_view          => "Admin View",
+    admin_delete        => "Admin Delete",
+    admin_create        => "Admin Create",
+    admin_update        => "Admin Update",
+    user_view           => "User View",
+    user_delete         => "User Delete",
+    user_create         => "User Create",
+    user_update         => "User Update",
+    view_agent          => "View Agent",
+    view_config         => "View Config",
+    update_config       => "Update Config",
+    view_prompt         => "View Prompt",
+    update_prompt       => "Update Prompt",
+    view_agents         => "View Agents",
+    delete_agents       => "Delete Agents",
+    create_agents       => "Create Agents",
+    update_agents       => "Update Agents",
+    view_hints          => "View Hints",
+    delete_hints        => "Delete Hints",
+    create_hints        => "Create Hints",
+    update_hints        => "Update Hints",
+    view_languages      => "View Languages",
+    delete_languages    => "Delete Languages",
+    create_languages    => "Create Languages",
+    update_languages    => "Update Languages",
+    view_step           => "View Step",
+    delete_step         => "Delete Step",
+    create_step         => "Create Step",
+    update_step         => "Update Step",
+    view_pronounce      => "View Pronounce",
+    delete_pronounce    => "Delete Pronounce",
+    create_pronounce    => "Create Pronounce",
+    update_pronounce    => "Update Pronounce",
+    view_functions      => "View Functions",
+    delete_functions    => "Delete Functions",
+    create_functions    => "Create Functions",
+    update_functions    => "Update Functions",
+    view_functionargs   => "View FunctionArgs",
+    delete_functionargs => "Delete FunctionArgs",
+    create_functionargs => "Create FunctionArgs",
+    update_functionargs => "Update FunctionArgs",
+    view_contexts       => "View Contexts",
+    delete_contexts     => "Delete Contexts",
+    create_contexts     => "Create Contexts",
+    update_contexts     => "Update Contexts",
+    view_features       => "View Features",
+    delete_features     => "Delete Features",
+    create_features     => "Create Features",
+    update_features     => "Update Features",
+    view_feature_toggles   => "View Feature Toggles",
+    delete_feature_toggles => "Delete Feature Toggles",
+    create_feature_toggles => "Create Feature Toggles",
+    update_feature_toggles => "Update Feature Toggles",
+    view_feature_strings   => "View Feature Strings",
+    delete_feature_strings => "Delete Feature Strings",
+    create_feature_strings => "Create Feature Strings",
+    update_feature_strings => "Update Feature Strings",
+    view_users          => "View Users",
+    delete_users        => "Delete Users",
+    create_users        => "Create Users",
+    update_users        => "Update Users",
+    view_summary        => "View Summary",
+    delete_summary      => "Delete Summary",
+    view_messages       => "View Messages",
+    delete_messages     => "Delete Messages",
+    view_debug          => "View Debug"
+    );
 
 # Load environment variables
 my $ENV = Env::C::getallenv();
@@ -110,15 +197,20 @@ my %dispatch = (
 	'/prompt'       => \&prompt,
 	'/summary'      => \&summary,
 	'/messages'     => \&messages,
-	'/contexts'     => \&contexts,
-	'/functions'    => \&functions,
+	'/context'      => \&context,
+	'/step'         => \&step,
+	'/feature'      => \&feature,
+	'/featuretoggles' => \&featuretoggles,,
+	'/featurestrings' => \&featurestrings,
+	'/function'     => \&function,
 	'/functionargs' => \&functionargs,
-	'/languages'    => \&languages,
+	'/language'     => \&language,
 	'/pronounce'    => \&pronounce,
 	'/hints'        => \&hints,
 	'/users'        => \&users,
 	'/debug'        => \&debug,
-	'/register'     => \&register,
+	'/totp'         => \&totp,
+	'/roles'        => \&roles,
     },
     'POST' => {
 	'/'             => \&agents,
@@ -127,15 +219,20 @@ my %dispatch = (
 	'/prompt'       => \&prompt,
 	'/summary'      => \&summary,
 	'/messages'     => \&messages,
-	'/contexts'     => \&contexts,
-	'/functions'    => \&functions,
+	'/context'      => \&context,
+	'/step'         => \&step,
+	'/featuretoggles' => \&featuretoggles,,
+	'/featurestrings' => \&featurestrings,
+	'/feature'      => \&feature,
+	'/function'     => \&function,
 	'/functionargs' => \&functionargs,
-	'/languages'    => \&languages,
+	'/language'     => \&language,
 	'/pronounce'    => \&pronounce,
 	'/hints'        => \&hints,
 	'/users'        => \&users,
 	'/post'         => \&post,
-	'/register'     => \&register,
+	'/totp'         => \&totp,
+	'/roles'        => \&roles,
     }
     );
 
@@ -146,8 +243,9 @@ my @nav = [
     { path => '/config',    name => 'Configuration', table => "ai_config"       },
     { path => '/prompt',    name => 'Prompt',        table => "ai_prompt"       },
     { path => '/summary',   name => 'Summary',       table => "ai_summary"      },
-    { path => '/contexts',  name => 'Contexts',      table => "ai_context"      },
-    { path => '/functions', name => 'Functions',     table => "ai_function"     },
+    { path => '/context',   name => 'Contexts',      table => "ai_context"      },
+    { path => '/step',      name => 'Steps',         table => "ai_step"         },
+    { path => '/function',  name => 'Functions',     table => "ai_function"     },
     { path => '/messages',  name => 'Messages',      table => "ai_message"      },
     { path => '/debug',     name => 'Debug',         table => undef             },
     { path => '/logout',    name => 'Logout',        table => undef		}
@@ -161,6 +259,7 @@ my @user_nav = [
 
 my @admin_nav = [
     { path => '/',         name => 'Agents'        },
+    { path => '/feature',  name => 'Features'      },
     { path => '/users',    name => 'Users'         },
     { path => '/logout',   name => 'Logout'        }
     ];
@@ -244,13 +343,13 @@ sub check_for_input {
     $sth->execute( $convo_id, $agent ) or die $DBI::errstr;
 
     while ( my $row = $sth->fetchrow_hashref ) {
-       push @message, "$row->{message}";
+	push @message, "$row->{message}";
 
-       my $update_sql = "UPDATE ai_messages SET replied = true WHERE id = ?";
+	my $update_sql = "UPDATE ai_messages SET replied = true WHERE id = ?";
 
-       my $usth = $dbh->prepare( $update_sql );
+	my $usth = $dbh->prepare( $update_sql );
 
-       $usth->execute( $row->{id} ) or die $DBI::errstr;
+	$usth->execute( $row->{id} ) or die $DBI::errstr;
     }
 
     my $res = Plack::Response->new( 200 );
@@ -258,9 +357,9 @@ sub check_for_input {
     $res->content_type( 'application/json' );
 
     if ( @message == 0 ) {
-       $res->body( $swml->swaig_response_json( [ { response => "ok" } ] ) );
+	$res->body( $swml->swaig_response_json( [ { response => "ok" } ] ) );
     } else {
-       $res->body( $swml->swaig_response_json( { action => [ { user_input => join(" ", @message) } ] }) );
+	$res->body( $swml->swaig_response_json( { action => [ { user_input => join(" ", @message) } ] }) );
     }
 
     broadcast_by_agent_id( $agent, $json->decode( $res->body ) );
@@ -270,7 +369,352 @@ sub check_for_input {
     return $res->finalize;
 }
 
+sub generate_random_string {
+    my $length = shift // 16;
+    my @chars = ('0'..'9', 'A'..'Z', 'a'..'z');
+    my $random_string;
+    foreach (1..$length) {
+	$random_string .= $chars[rand @chars];
+    }
+    return $random_string;
+}
+
+
 # PSGI application code
+my $reset_app = sub {
+    my $env     = shift;
+    my $error   = shift;
+    my $req     = Plack::Request->new( $env );
+    my $params  = $req->parameters;
+
+    my $res = Plack::Response->new( 200 );
+
+    $res->content_type( 'text/html' );
+
+    my $template = HTML::Template::Expr->new( filename => "/app/template/reset.tmpl", die_on_bad_params => 0 );
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 }) or die $DBI::errstr;
+
+    if ( $req->method eq 'POST' ) {
+	if ($params->{action} eq 'doreset' && $params->{token} && ( $params->{password} eq $params->{password2} ) ) {
+	    my $sql = "SELECT au.*, pr.token AS password_reset_token, pr.created AS password_reset_created FROM ai_users au LEFT JOIN ai_password_reset pr ON au.id = pr.user_id WHERE au.username = ? AND pr.token = ?  AND pr.created > NOW() - INTERVAL '15 minutes'";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{username}, $params->{token} );
+
+	    my $row = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    if ( $row ) {
+		my $salt = substr(generate_nonce(), 0, 16);
+
+		my $bcrypt_hash = bcrypt( $params->{password}, '2b', 12, $salt );
+
+		my $update_sql = "UPDATE ai_users SET password = ?, totp_secret = null, totp_enabled = false WHERE id = ?";
+
+		my $usth = $dbh->prepare( $update_sql );
+
+		$usth->execute( $bcrypt_hash, $row->{id} ) or die $DBI::errstr;
+
+		$usth->finish;
+
+		my $delete_sql = "DELETE FROM ai_password_reset WHERE user_id = ?";
+
+		my $dth = $dbh->prepare( $delete_sql );
+
+		$dth->execute( $row->{id} ) or die $DBI::errstr;
+
+		$dth->finish;
+
+		my $sw = SignalWire::RestAPI->new(
+		    AccountSid  => $ENV{ACCOUNT_SID},
+		    AuthToken   => $ENV{AUTH_TOKEN},
+		    Space       => $ENV{SPACE_NAME},
+		    );
+
+		my $response = $sw->POST( 'Messages',
+					  From     => $ENV{FROM_NUMBER},
+					  To       => $row->{phone_number},
+					  Body     => "Your password was reset and TOTP disabled.  If you did not request this, please contact support immediately."
+		    );
+
+		print STDERR Dumper( $response ) if ! $response->{is_success};
+
+		$template->param( message => "Password reset", success => 1 );
+	    } else {
+		$template->param( message => "Password failed" );
+	    }
+
+	} else {
+	    my $sql = "SELECT * FROM ai_users WHERE username = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{username} ) or die $DBI::errstr;
+
+	    my $row = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    if ( $row ) {
+		my $token = generate_random_string( 32 );
+
+		my $sw = SignalWire::RestAPI->new(
+		    AccountSid  => $ENV{ACCOUNT_SID},
+		    AuthToken   => $ENV{AUTH_TOKEN},
+		    Space       => $ENV{SPACE_NAME},
+		    );
+
+		my $response = $sw->POST( 'Messages',
+					  From     => $ENV{FROM_NUMBER},
+					  To       => $row->{phone_number},
+					  Body     => "Your password reset link is https://$env->{HTTP_HOST}/reset?token=$token"
+		    );
+		print STDERR Dumper( $response ) if ! $response->{is_success};
+
+
+		my $token_sql = "INSERT INTO ai_password_reset (user_id, token) VALUES (?, ?)";
+
+		my $token_sth = $dbh->prepare( $token_sql );
+
+		$token_sth->execute( $row->{id}, $token ) or die $DBI::errstr;
+
+		$token_sth->finish;
+
+		$template->param( message => "A reset link was sent to the phone number on file" );
+	    } else {
+		$template->param( message => "A reset link was sent to the phone number on file" );
+	    }
+	}
+    } else {
+	if ( $params->{token} ) {
+	    my $sql = "SELECT au.*, pr.token AS password_reset_token, pr.created AS password_reset_created FROM ai_users au LEFT JOIN ai_password_reset pr ON au.id = pr.user_id WHERE pr.token = ?  AND pr.created > NOW() - INTERVAL '15 minutes'";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{token} ) or die $DBI::errstr;
+
+	    my $row = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    if ( $row ) {
+		$template->param( reset => 1, token => $params->{token}, username => $row->{username} );
+	    } else {
+		$template->param( message => "The token has expired or is invalid" );
+	    }
+	} else {
+	    $template->param( gettoken => 1, message => "Enter your username to reset your password" );
+	}
+    }
+    $dbh->disconnect;
+
+    $res->body( $template->output );
+
+    return $res->finalize;
+};
+
+sub check_role {
+    my $session = shift;
+    my $role    = shift;
+    my $roles   = $session->{roles};
+
+    my @roles_to_check = split /,/, $role;
+
+    if (any { my $y = $_; any { $y->{name} eq $_ } @roles_to_check } @$roles) {
+	return 1;
+    }
+    return 0;
+}
+
+sub roles {
+    my $env      = shift;
+    my $req      = Plack::Request->new( $env );
+    my $params   = $req->parameters;
+    my $user_id  = $params->{user_id};
+    my $username = $params->{username};
+    my $json     = JSON::PP->new->ascii->pretty->allow_nonref;
+    my $session  = $env->{'psgix.session'};
+
+    my $res = Plack::Response->new( 200 );
+
+    $res->content_type( 'text/html' );
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
+
+    if ( $req->method eq 'POST' && check_role( $session ,'admin_update' ) ) {
+	if ( $params->{action} eq 'add' ) {
+	    my $sql = "INSERT INTO ai_user_roles (name, description, user_id) VALUES (?, ?, ?)";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{name}, $role_names{$params->{name}}, $params->{user_id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+	} elsif ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete' ) ) {
+	    my $sql = "DELETE FROM ai_user_roles WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+	}
+
+	$dbh->disconnect;
+
+	$res->redirect( "/roles?user_id=$user_id&username=$username" );
+
+	return $res->finalize;
+    }
+
+    my %my_roles = %{ \%role_names };
+
+    my $sql = "SELECT * FROM ai_user_roles WHERE user_id = ?";
+
+    my $sth = $dbh->prepare( $sql );
+
+    $sth->execute( $user_id ) or die $DBI::errstr;
+
+    my $roles = $sth->fetchall_arrayref({});
+
+    $sth->finish;
+
+    map { delete $my_roles{$_->{name}} } @$roles;
+
+    my @role_array = map { { name => $_, description => $role_names{$_} } } sort keys %my_roles;
+
+    my $template = HTML::Template::Expr->new( filename => "/app/template/roles.tmpl", die_on_bad_params => 0 );
+
+    $template->param(
+	nonce     => $env->{'plack.nonce'},
+	roles     => $roles,
+	username  => $params->{username},
+	user_id   => $user_id,
+	my_roles  => \@role_array
+	);
+    $res->body( $template->output );
+
+    $dbh->disconnect;
+
+    return $res->finalize;
+}
+
+sub totp {
+    my $env     = shift;
+    my $error   = shift;
+    my $req     = Plack::Request->new( $env );
+    my $params  = $req->parameters;
+    my $session = $env->{'psgix.session'};
+
+    $params->{code} =~ s/[^0-9]//g;
+
+    my $res = Plack::Response->new( 200 );
+
+    $res->content_type( 'text/html' );
+
+    my $template = HTML::Template::Expr->new( filename => "/app/template/totp.tmpl", die_on_bad_params => 0 );
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 }) or die $DBI::errstr;
+
+    my $sql = "SELECT * FROM ai_users WHERE id = ?";
+
+    my $sth = $dbh->prepare( $sql );
+
+    $sth->execute( $session->{user_id} ) or die $DBI::errstr;
+
+    my $row = $sth->fetchrow_hashref;
+
+    $sth->finish;
+
+    if ( $req->method eq 'POST' ) {
+	if ( $row->{totp_enabled} ) {
+	    if ( $params->{disable} ) {
+		my $sql = "UPDATE ai_users SET totp_secret = null, totp_enabled = false WHERE id = ?";
+
+		my $sth = $dbh->prepare( $sql );
+
+		$sth->execute( $session->{user_id} ) or die $DBI::errstr;
+
+		$sth->finish;
+
+		$template->param( disabled => 1 );
+	    } elsif ( $params->{code} ) {
+
+		my $gen = new Authen::TOTP( secret => $ENV{TOTP_SECRET} );
+
+		if ( $params->{code} && $gen->validate_otp(otp => $params->{code}, base32secret => $row->{totp_secret}, tolerance => 2) ) {
+		    $template->param( check => 1 );
+		} else {
+		    $template->param( invalid => 1 );
+		}
+	    } else {
+		$template->param( enabled => 1 );
+	    }
+	}  else {
+
+	    my $gen = new Authen::TOTP( secret => $ENV{TOTP_SECRET} );
+
+	    if ( $params->{code} && $gen->validate_otp(otp => $params->{code}, base32secret => $params->{base32secret}, tolerance => 2) ) {
+		$template->param( valid   => 1 );
+
+		my $sql = "UPDATE ai_users SET totp_secret = ?, totp_enabled = true WHERE id = ?";
+
+		my $sth = $dbh->prepare( $sql );
+
+		$sth->execute( $params->{base32secret}, $session->{user_id} ) or die $DBI::errstr;
+
+		$sth->finish;
+	    } else {
+		$template->param( invalid => 1 );
+	    }
+
+	}
+
+	$dbh->disconnect;
+
+	$res->body( $template->output );
+
+	return $res->finalize;
+    }
+
+    if ( $row->{totp_enabled} ) {
+	$template->param( enabled => 1 );
+    } else {
+	my $gen = new Authen::TOTP( secret => $ENV{TOTP_SECRET} );
+
+	my $base32secret = $gen->base32secret();
+
+	my $uri = $gen->generate_otp(user => $row->{email}, issuer =>$ENV{TOTP_ISSUER} );
+
+	my $url = "https://chart.googleapis.com/chart?chs=150x150&chld=M|0&cht=qr&chl=$uri";
+
+	$template->param(
+	    enable       => 1,
+	    base32secret => $base32secret,
+	    qrcode       => $url
+	    );
+    }
+
+    $res->body( $template->output );
+
+    return $res->finalize;
+}
+
 sub error {
     my $env   = shift;
     my $error = shift;
@@ -289,7 +733,7 @@ sub error {
     return $res->finalize;
 }
 
-sub register {
+my $register_app = sub {
     my $env   = shift;
     my $error = "Not Implemented";
     my $req   = Plack::Request->new( $env );
@@ -305,7 +749,7 @@ sub register {
     $res->body( $template->output );
 
     return $res->finalize;
-}
+};
 
 sub check_agent_id {
     my $env      = shift;
@@ -315,11 +759,11 @@ sub check_agent_id {
 
     if ( $agent_id eq '' ) {
 	my $res = Plack::Response->new( 200 );
-	
+
 	$res->redirect( "/" );
-	
+
 	print STDERR "No agent_id when one is required" if $ENV{DEBUG};
-	
+
 	return $res->finalize;
     }
 }
@@ -339,8 +783,6 @@ sub agent {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 }) or die $DBI::errstr;
 
-    # Check if the agent exists and if the user has access to it.
-    # If not, redirect to the home page.
     if ( $session->{user_id} ) {
 	my ( $sql, $agents );
 
@@ -401,7 +843,11 @@ sub agent {
 	    }
 
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/conversation.tmpl", die_on_bad_params => 0 );
-
+	    my $start =  ($p->{'ai_end_date'}   / 1000) - 5000;
+	    my $end   =  ($p->{'ai_start_date'} / 1000) + 5000;
+	    
+	    my $grafana_url = "https://grafana.proxy.signalwire.cloud/grafana/d/18d8e226-2f9e-4485-a1cf-31bd98ff6ff1/support-logs?orgId=1&from=$start&to=$end&var-tenant=us-west&var-search_string=$p->{'call_id'}";
+	    
 	    $template->param(
 		nav		    => @nav,
 		nonce               => $env->{'plack.nonce'},
@@ -418,6 +864,8 @@ sub agent {
 		caller_id_number    => $p->{'caller_id_number'},
 		total_output_tokens => $p->{'total_output_tokens'},
 		total_input_tokens  => $p->{'total_input_tokens'},
+		grafana_url         => $grafana_url,
+		is_admin	    => $session->{is_admin},
 		raw_json            => $json->encode( $p ),
 		record_call_url     => $p->{SWMLVars}->{record_call_url} );
 
@@ -496,7 +944,6 @@ sub agent {
 
 	$template->param(
 	    nav                  => @nav,
-	    url                  => "https://$env->{HTTP_HOST}",
 	    nonce                => $env->{'plack.nonce'},
 	    agent_id             => $agent,
 	    table_contents       => \@table_contents,
@@ -523,6 +970,8 @@ sub summary {
     my $json    = JSON::PP->new->ascii->pretty->allow_nonref;
     my $params  = $req->parameters;
     my $session = $env->{'psgix.session'};
+    my $res     = Plack::Response->new( 200 );
+
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -531,7 +980,7 @@ sub summary {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
     if ( $method eq 'POST' ) {
-	if ( $params->{action} eq 'delete' ) {
+	if ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_summary' ) ) {
 	    my $sql = "DELETE FROM ai_summary WHERE agent_id = ? AND id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -542,43 +991,54 @@ sub summary {
 
 	    $dbh->disconnect;
 
-	    my $res = Plack::Response->new( 200 );
-
 	    $res->redirect( "/summary?agent_id=$agent" );
 
 	    return $res->finalize;
 	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_summary') ) {
+	    my $select_sql = "SELECT * FROM ai_summary WHERE agent_id = ? ORDER BY created DESC";
+
+	    my $sth = $dbh->prepare( $select_sql );
+
+	    $sth->execute( $agent ) or die $DBI::errstr;
+
+	    my $table_contents = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/summary.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav            => @nav,
+		nonce          => $env->{'plack.nonce'},
+		table_contents => $table_contents,
+		agent_id       => $agent,
+		);
+
+	    my $res = Plack::Response->new( 200 );
+
+	    $res->content_type( 'text/html' );
+
+	    $res->body( $template->output );
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $select_sql = "SELECT * FROM ai_summary WHERE agent_id = ? ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $select_sql );
-
-    $sth->execute( $agent ) or die $DBI::errstr;
-
-    my $table_contents = $sth->fetchall_arrayref({});
-
-    $sth->finish;
-
-    $dbh->disconnect;
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/summary.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav            => @nav,
-	nonce          => $env->{'plack.nonce'},
-	table_contents => $table_contents,
-	agent_id       => $agent,
-	url            => "https://$env->{HTTP_HOST}"
-	);
-
-    my $res = Plack::Response->new( 200 );
-
-    $res->content_type( 'text/html' );
-
-    $res->body( $template->output );
-
-    return $res->finalize;
 }
 
 sub messages {
@@ -590,6 +1050,7 @@ sub messages {
     my $json    = JSON::PP->new->ascii->pretty->allow_nonref;
     my $params  = $req->parameters;
     my $session = $env->{'psgix.session'};
+    my $res     = Plack::Response->new( 200 );
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -598,7 +1059,7 @@ sub messages {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
     if ( $method eq 'POST' ) {
-	if ( $params->{action} eq 'delete' ) {
+	if ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_messages' ) ) {
 	    my $sql = "DELETE FROM ai_messages WHERE agent_id = ? AND id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -609,43 +1070,52 @@ sub messages {
 
 	    $dbh->disconnect;
 
-	    my $res = Plack::Response->new( 200 );
-
 	    $res->redirect( "/messages?agent_id=$agent" );
 
 	    return $res->finalize;
 	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_messages') ) {
+	    my $select_sql = "SELECT * FROM ai_messages WHERE agent_id = ? ORDER BY created DESC";
+
+	    my $sth = $dbh->prepare( $select_sql );
+
+	    $sth->execute( $agent ) or die $DBI::errstr;
+
+	    my $table_contents = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/messages.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav            => @nav,
+		nonce          => $env->{'plack.nonce'},
+		table_contents => $table_contents,
+		agent_id       => $agent,
+		);
+
+	    $res->content_type( 'text/html' );
+
+	    $res->body( $template->output );
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $select_sql = "SELECT * FROM ai_messages WHERE agent_id = ? ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $select_sql );
-
-    $sth->execute( $agent ) or die $DBI::errstr;
-
-    my $table_contents = $sth->fetchall_arrayref({});
-
-    $sth->finish;
-
-    $dbh->disconnect;
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/messages.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav            => @nav,
-	nonce          => $env->{'plack.nonce'},
-	table_contents => $table_contents,
-	agent_id       => $agent,
-	url            => "https://$env->{HTTP_HOST}"
-	);
-
-    my $res = Plack::Response->new( 200 );
-
-    $res->content_type( 'text/html' );
-
-    $res->body( $template->output );
-
-    return $res->finalize;
 }
 
 my $laml_app = sub {
@@ -696,6 +1166,10 @@ my $swml_app = sub {
     my $assistant;
     my %config;
     my @prompt_fields = qw( FREQUENCY_PENALTY PRESENCE_PENALTY MAX_TOKENS TOP_P TEMPERATURE CONFIDENCE BARGE_CONFIDENCE );
+
+    if ($from =~ /sip:(.*?)@/) {
+	$from = $1;
+    }
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -753,7 +1227,7 @@ my $swml_app = sub {
 	$swml->add_application( "main", "record_call", { format => 'wav', stereo => 'true' } );
     }
 
-    if ( $config{ENABLE_CNAM} ) {
+    if ( $config{ENABLE_CNAM} &&  $config{ACCOUNT_SID} && $config{AUTH_TOKEN} && $config{SPACE_NAME} && $config{API_VERSION} ) {
 
 	broadcast_by_agent_id( $agent, "Looking up caller name" );
 	my $data;
@@ -841,7 +1315,7 @@ my $swml_app = sub {
 	}
 
 	{
-	    my $sql = "SELECT * FROM ai_language WHERE agent_id = ?";
+	    my $sql = "SELECT * FROM ai_language WHERE agent_id = ? ORDER BY language_order ASC";
 
 	    my $sth = $dbh->prepare( $sql );
 
@@ -950,7 +1424,9 @@ my $swml_app = sub {
 
 	    while ( my $row = $sth->fetchrow_hashref ) {
 		my @args;
-
+		my $argcount = 0;
+		my @required;
+		
 		if ( $row->{code} ) {
 		    my $arguments;
 
@@ -964,25 +1440,31 @@ my $swml_app = sub {
 
 		    while ( my $arg = $argsth->fetchrow_hashref ) {
 			next if $arg->{active} == 0;
-			
+			$argcount++;
 			$arguments->{properties}->{$arg->{name}} = { type => $arg->{type}, description => $arg->{description} };
+			push @required, $arg->{name} if $arg->{required};
 		    }
 
-		    $argsth->finish;
+		    $arguments->{required} = \@required if scalar @required > 0;
 		    
-		    broadcast_by_agent_id( $agent, "Adding function $row->{name}" );
+		    $argsth->finish;
 
-		    $swml->add_aiswaigfunction({
-			active   => $row->{active} ? 'true' : 'false',
-			function => $row->{name},
-			purpose  => $row->{purpose},
-			argument => $arguments });
-		}
+		    if  ( $argcount > 0 ) {
+			broadcast_by_agent_id( $agent, "Adding function $row->{name}" );
+		    
+			$swml->add_aiswaigfunction({
+			    active   => $row->{active} ? 'true' : 'false',
+			    function => $row->{name},
+			    purpose  => $row->{purpose},
+			    argument => $arguments });
+		    } else {
+			broadcast_by_agent_id( $agent, "Skipping function $row->{name}, no arguments defined." );
+		    }
 	    }
 
 	    if ( $config{ENABLE_CONTEXTS} ) {
 		my $sql = "SELECT * FROM ai_context WHERE agent_id = ? ORDER BY id ASC";
-
+		my $contextcount = 0;
 		my $sth = $dbh->prepare( $sql );
 
 		$sth->execute( $agent ) or die $DBI::errstr;
@@ -997,12 +1479,14 @@ my $swml_app = sub {
 			    my ( $function, $args ) = split( /:/, $function );
 			    broadcast_by_agent_id( $agent, "Adding toggle function $function with args $args" );
 			    push @actions, {
-				toggle_function => {
+				toggle_functions => [{
 				    function => $function,
-				    active   => $args } };
+				    active   => $args }] };
 			}
 		    }
+		    
 		    broadcast_by_agent_id( $agent, "Adding context switch with consolidate $row->{consolidate}, full reset $row->{full_reset}, user prompt $row->{user_prompt}, system prompt $row->{system_prompt}" );
+
 		    push @actions, {
 			context_switch => {
 			    consolidate   => $row->{consolidate},
@@ -1018,24 +1502,115 @@ my $swml_app = sub {
 			    action   => \@actions
 			}
 		    };
-
+		    $contextcount++;
 		    push @context_expressions, $expression;
 		}
 
-		$swml->add_aiswaigfunction({
-		    function => "switch_context",
-		    purpose => "to change contexts ",
-		    argument => {
-			type => "object",
-			properties => {
-			    context => {
-				type        => "string",
-				description => "The name of the new context" }
+		if ( $contextcount > 0 ) {
+		    broadcast_by_agent_id( $agent, "Adding context switch function" );
+		    $swml->add_aiswaigfunction({
+			function => "switch_context",
+			purpose  => "to switch contexts ",
+			argument => {
+			    type => "object",
+			    properties => {
+				context => {
+				    type        => "string",
+				    description => "The name of the new context" }
+			    },
 			},
-		    },
-		    data_map => {
-			expressions => \@context_expressions,
-		    }});
+			data_map => {
+			    expressions => \@context_expressions,
+			}});
+		}
+		}
+	    }
+	    
+	    if ( $config{ENABLE_STEPS} ) {
+		my $steps = 0;
+		my $sql = "SELECT * FROM ai_steps WHERE agent_id = ? ORDER BY id ASC";
+		
+		my $sth = $dbh->prepare( $sql );
+
+		$sth->execute( $agent ) or die $DBI::errstr;
+
+		my @step_expressions;
+
+		while ( my $row = $sth->fetchrow_hashref ) {
+		    my @actions;
+
+		    if ( $row->{custom_action} ) {
+			my ($do, $arg, $say) = split( /\|/, $row->{custom_action}, 3 );
+			
+			if ( $do eq "send_message" ) {
+			    my $msg = SignalWire::ML->new;
+			    
+			    $msg->add_application( "main", "send_sms" => { to_number   => "$from",
+									   from_number => "$assistant",
+									   body        => "$arg, Reply STOP to stop." } );
+			    if ( $say ) {
+				push @actions, { say => "$say" };
+			    }
+			    push @actions, { SWML => $msg->render };
+			} elsif ( $do eq "transfer" ) {
+			    my $transfer = SignalWire::ML->new;
+			
+			    $transfer->add_application( "main", "connect" => { to   => $arg } );
+			
+			    if ( $say ) {
+				push @actions, { say => "$say" };
+			    }
+			    
+			    push @actions, { SWML => $transfer->render };
+			    
+			}
+		    }
+
+		    
+		    if ( $row->{toggle_function} ) {
+			foreach my $function ( split( /\|/, $row->{toggle_function} ) ) {
+			    my ( $function, $args ) = split( /:/, $function );
+			    broadcast_by_agent_id( $agent, "Adding toggle function $function with args $args" );
+			    push @actions, {
+				toggle_functions => [{
+				    function =>  $function ,
+				    active   => $args }] };
+			}
+		    }
+		    
+		    if ( $row->{ai_step_b2b_functions} ) {
+			push @actions, { back_to_back_functions => 'true' };
+		    }
+
+		    my $expression = {
+			string  => '${args.step}',
+			pattern => $row->{ai_step_pattern},
+			output  => {
+			    response => $row->{ai_step_response},
+			    ( scalar @actions > 0 ? ( action   => \@actions) : () )
+			}
+		    };
+
+		    push @step_expressions, $expression;
+		    $steps++;
+		}
+		
+		if ( $steps ) {
+		    $swml->add_aiswaigfunction({
+			function => "advance_step",
+			purpose  => "to advance to a particular step",
+			argument => {
+			    type => "object",
+			    properties => {
+				step => {
+				    type        => "string",
+				    description => "The step number as a string" }
+			    },
+			},
+			data_map => {
+			    expressions => \@step_expressions,
+			}});
+		}
 	    }
 
 	    if ( $config{ENABLE_SLACK_SWAIG} && $config{SLACK_WEBHOOK_URL} && $config{SLACK_CHANNEL} && $config{SLACK_USERNAME} && $config{SLACK_MESSAGE} ) {
@@ -1081,9 +1656,10 @@ my $swml_app = sub {
 								   from => $assistant } );
 
 		$output = $transfer->swaig_response( {
-		    response => "transferred, the call has ended.",
-		    action   => [ { say  => "Please stand by while I connect your call." },
-				  { SWML => $transfer->render }, { stop => 'true' } ] } );
+		    post_process => 'true',
+		    response => "Tell the user you are going to transfer the call. Do not change languages from the one you are currently using. Do not hangup.",       
+		    action => [ { SWML => $transfer->render, transfer => 'true' } ] } );   
+
 
 		my %hash;
 
@@ -1096,6 +1672,7 @@ my $swml_app = sub {
 
 		$swml->add_aiswaigfunction( {
 		    function  => 'transfer',
+		    ( $config{ENABLE_TRANSFER_INACTIVE} ? ( active => 'false' ) : ()),
 		    purpose   => "use to transfer to a target",
 		    meta_data => {
 			table => \%hash
@@ -1131,8 +1708,7 @@ my $swml_app = sub {
 
 		$msg->add_application( "main", "send_sms" => { to_number   => '${args.to}',
 							       from_number => "$assistant",
-							       body        => '${args.message}, Reply STOP to stop.',
-							       region      => "us" } );
+							       body        => '${args.message}, Reply STOP to stop.' } );
 
 		$output = $msg->swaig_response( {
 		    response => "Message sent.",
@@ -1140,6 +1716,7 @@ my $swml_app = sub {
 
 		$swml->add_aiswaigfunction( {
 		    function => 'send_message',
+		    ( $config{ENABLE_MESSAGE_INACTIVE} ? ( acive => 'false' ) : ()),
 		    purpose  => "use to send text messages to a user",
 		    argument => {
 			type => "object",
@@ -1151,6 +1728,7 @@ my $swml_app = sub {
 				type        => "string",
 				description => "The users number in e.164 format" }
 			},
+			required => [ "message", "to" ]
 		    },
 		    data_map => {
 			expressions => [{
@@ -1167,8 +1745,7 @@ my $swml_app = sub {
 		$msg->add_application( "main", "send_sms" => { to_number   => '${args.to}',
 							       from_number => "$assistant",
 							       body        => '${args.message}, Reply STOP to stop.',
-							       media       => [ '${args.media}' ],
-							       region      => "us" } );
+							       media       => [ '${args.media}' ] } );
 
 		$output = $msg->swaig_response( {
 		    response => "Message sent.",
@@ -1288,6 +1865,33 @@ my $swml_app = sub {
 			    }}]}} );
 	    }
 
+	    if ( $config{AI_ROOMIESERVE_URL} ) {
+		broadcast_by_agent_id( $agent, "Adding AI Roomieserve includes" );
+		if ( $config{AI_ROOMIESERVE_URL} =~ m|https:\/\/([^:]+):([^@]+)@([^/]+)(/[^?#]*)?|) {
+		    $swml->add_aiinclude( { url  => $config{AI_ROOMIESERVE_URL} } );
+		} else {
+		    broadcast_by_agent_id( $agent, "AI Roomieserve URL is not valid" );
+		}
+	    }
+
+	    if ( $config{AI_SHEETS_URL} ) {
+		broadcast_by_agent_id( $agent, "Adding AI Sheets includes" );
+		if ( $config{AI_SHEETS_URL} =~ m|https:\/\/([^:]+):([^@]+)@([^/]+)(/[^?#]*)?|) {
+		    my $username = $1;
+		    my $password = $2;
+		    my $host = $3;
+		    my $path = $4 // "/";
+
+		    $swml->add_aiinclude( {
+			functions => [ 'append' ],
+			url  => $config{AI_SHEETS_URL},
+			user => $username,
+			pass => $password } );
+		} else {
+		    broadcast_by_agent_id( $agent, "AI Sheets URL is not valid" );
+		}
+	    }
+
 	    if ( $config{AI_CALENDAR_URL} ) {
 		broadcast_by_agent_id( $agent, "Adding AI Calendar includes" );
 		if ( $config{AI_CALENDAR_URL} =~ m|https:\/\/([^:]+):([^@]+)@([^/]+)(/[^?#]*)?|) {
@@ -1299,8 +1903,9 @@ my $swml_app = sub {
 		    $swml->add_aiinclude( {
 			functions => [ 'freebusy', 'events' ],
 			url  => $config{AI_CALENDAR_URL},
-			user => $username,
-			pass => $password } );
+#			user => $username,
+#			pass => $password
+					  } );
 		} else {
 		    broadcast_by_agent_id( $agent, "AI Calendar URL is not valid" );
 		}
@@ -1624,9 +2229,9 @@ sub config {
     my $res    = Plack::Response->new( 200 );
     my $params = $req->parameters;
 
-    my @toggles = qw( ENABLE_DENOISE ENABLE_GOOGLE_ADDRESS_VALIDATION ENABLE_WEATHER_GOV ENABLE_OPENSTREET_MAP ENABLE_SEND_DIGITS_ON_ANSWER ENABLE_ANSWER_DELAY ENABLE_SEND_DIGITS ENABLE_BYPASS ENABLE_ZENDESK_TICKET ENABLE_CONTEXTS ENABLE_SLACK_NOTIFICATION ENABLE_CALENDLY ENABLE_SLACK_SWAIG ENABLE_PRONOUNCE ENABLE_TRANSFER ENABLE_DEBUG_WEBHOOK ENABLE_POST_PROMPT ENABLE_CNAM ENABLE_SWAIG ENABLE_RECORD ENABLE_MESSAGE ENABLE_MMS_MESSAGE ENABLE_WEATHER ENABLE_TRIVIA ENABLE_JOKES ENABLE_CHECK_FOR_INPUT SAVE_BLANK_CONVERSATIONS SEND_SUMMARY_MESSAGE SIMPLE_POST_FUNCTION SET_CONVERSATION_ID);
+    my @toggles = qw( ENABLE_DENOISE ENABLE_GOOGLE_ADDRESS_VALIDATION ENABLE_WEATHER_GOV ENABLE_OPENSTREET_MAP ENABLE_SEND_DIGITS_ON_ANSWER ENABLE_ANSWER_DELAY ENABLE_SEND_DIGITS ENABLE_BYPASS ENABLE_ZENDESK_TICKET ENABLE_CONTEXTS ENABLE_STEPS ENABLE_SLACK_NOTIFICATION ENABLE_CALENDLY ENABLE_SLACK_SWAIG ENABLE_PRONOUNCE ENABLE_TRANSFER ENABLE_TRANSFER_INACTIVE ENABLE_DEBUG_WEBHOOK ENABLE_POST_PROMPT ENABLE_CNAM ENABLE_SWAIG ENABLE_RECORD ENABLE_MESSAGE ENABLE_MESSAGE_INACTIVE ENABLE_MMS_MESSAGE ENABLE_WEATHER ENABLE_TRIVIA ENABLE_JOKES ENABLE_CHECK_FOR_INPUT SAVE_BLANK_CONVERSATIONS SEND_SUMMARY_MESSAGE SIMPLE_POST_FUNCTION SET_CONVERSATION_ID);
 
-    my @fields  = qw(GOOGLE_API_KEY AUTH_USERNAME AUTH_PASSWORD SPACE_NAME ACCOUNT_SID AUTH_TOKEN API_VERSION TEMPERATURE TOP_P BARGE_CONFIDENCE CONFIDENCE PRESENCE_PENALTY FREQUENCY_PENALTY CUSTODIAN_SMS CUSTODIAN_CELL ASSISTANT TRANSFER_TABLE CALENDLY_MESSAGE API_NINJAS_KEY AI_CONTACTS_URL AI_EMAIL_URL AI_CALENDAR_URL MAX_TOKENS SLACK_WEBHOOK_URL SLACK_CHANNEL SLACK_USERNAME SLACK_MESSAGE ZENDESK_API_KEY ZENDESK_SUBDOMAIN BYPASS_SOURCES ANSWER_DELAY_LENGTH SEND_DIGITS_ON_ANSWER );
+    my @fields  = qw(GOOGLE_API_KEY AUTH_USERNAME AUTH_PASSWORD SPACE_NAME ACCOUNT_SID AUTH_TOKEN API_VERSION TEMPERATURE TOP_P BARGE_CONFIDENCE CONFIDENCE PRESENCE_PENALTY FREQUENCY_PENALTY CUSTODIAN_SMS CUSTODIAN_CELL ASSISTANT TRANSFER_TABLE CALENDLY_MESSAGE API_NINJAS_KEY AI_CONTACTS_URL AI_EMAIL_URL AI_CALENDAR_URL AI_SHEETS_URL AI_ROOMIESERVE_URL MAX_TOKENS SLACK_WEBHOOK_URL SLACK_CHANNEL SLACK_USERNAME SLACK_MESSAGE ZENDESK_API_KEY ZENDESK_SUBDOMAIN BYPASS_SOURCES ANSWER_DELAY_LENGTH SEND_DIGITS_ON_ANSWER );
 
     my ( @controls, @settings );
 
@@ -1655,7 +2260,7 @@ sub config {
 
     $res->content_type( 'text/html' );
 
-    if ( $method eq 'POST' ) {
+    if ( $method eq 'POST' && check_role( $session ,'admin_update,update_config' ) ) {
 
 	foreach my $toggle ( @toggles ) {
 	    if ( ! exists $params->{$toggle} ) {
@@ -1677,39 +2282,51 @@ sub config {
 	untie %config;
 
 	return $res->finalize;
+    } else {
+	if ( check_role( $session ,'admin_view,view_config' ) ) {
+	    foreach my $toggle ( @toggles ) {
+		my $control = { var => $toggle, val => $config{$toggle}, checked => $config{$toggle} ? "checked" : "" };
+
+		push @controls, $control;
+	    }
+
+	    foreach my $field ( @merged_fields ) {
+		my $control = { var => $field, val => $config{$field} };
+
+		push @settings, $control;
+	    }
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/config.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav	 => @nav,
+		nonce    => $env->{'plack.nonce'},
+		agent_id => $agent,
+		controls => \@controls,
+		fields   => \@settings,
+		is_admin => $session->{is_admin},
+		url      => "https://$env->{HTTP_HOST}/config",
+		swml_url => ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) ? "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/swml?agent_id=$agent" : "https://$env->{HTTP_HOST}/swml?agent_id=$agent",
+		laml_url => ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) ? "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/laml?agent_id=$agent" : "https://$env->{HTTP_HOST}/laml?agent_id=$agent"
+		);
+
+	    untie %config;
+
+	    $res->body( $template->output );
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    return $res->finalize;
+	}
     }
-
-    foreach my $toggle ( @toggles ) {
-	my $control = { var => $toggle, val => $config{$toggle}, checked => $config{$toggle} ? "checked" : "" };
-
-	push @controls, $control;
-    }
-
-    foreach my $field ( @merged_fields ) {
-	my $control = { var => $field, val => $config{$field} };
-
-	push @settings, $control;
-    }
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/config.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav	 => @nav,
-	nonce    => $env->{'plack.nonce'},
-	agent_id => $agent,
-	controls => \@controls,
-	fields   => \@settings,
-	is_admin => $session->{is_admin},
-	url      => "https://$env->{HTTP_HOST}/config",
-	swml_url	   => ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) ? "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/swml?agent_id=$agent" : "https://$env->{HTTP_HOST}/swml?agent_id=$agent",
-	laml_url	   => ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) ? "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/laml?agent_id=$agent" : "https://$env->{HTTP_HOST}/laml?agent_id=$agent"
-	);
-
-    untie %config;
-
-    $res->body( $template->output );
-
-    return $res->finalize;
 }
 
 sub prompt {
@@ -1720,6 +2337,7 @@ sub prompt {
     my $res    = Plack::Response->new( 200 );
     my $params = $req->parameters;
 
+    my $session = $env->{'psgix.session'};
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -1730,50 +2348,72 @@ sub prompt {
     $res->content_type( 'text/html' );
 
     if ( $method eq 'POST' ) {
-	my $sql = 'UPDATE ai_prompt SET prompt = ?, post_prompt = ? WHERE agent_id = ?';
+	if ( check_role( $session ,'admin_update,update_prompt' ) ) {
+	    my $sql = "INSERT INTO ai_prompt (agent_id, prompt, post_prompt) VALUES (?, ?, ?) ON CONFLICT (agent_id) DO UPDATE SET prompt = EXCLUDED.prompt, post_prompt = EXCLUDED.post_prompt";
+	    
+	    my $sth = $dbh->prepare( $sql );
+	    
+	    $sth->execute( $agent, $params->{prompt}, $params->{post_prompt} ) or die $DBI::errstr;
+	    
+	    $sth->finish;
+	    
+	    $dbh->disconnect;
+	    
+	    my $res = Plack::Response->new( 200 );
+	    
+	    $res->redirect( "/prompt?agent_id=$agent" );
+	    
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+	    
+	    $template->param(message => "You do not have permission to access this resource");
+	    
+	    $res->status(403);
+	    
+	    $res->body($template->output);
+	    
+	    return $res->finalize;
+	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_prompt' ) ) {
+	    my $sql = 'SELECT prompt,post_prompt FROM ai_prompt WHERE agent_id = ?';
+	    
+	    my $sth = $dbh->prepare($sql);
+	    
+	    $sth->execute($agent) or die $DBI::errstr;
+	    
+	    my $row = $sth->fetchrow_hashref();
+	    print STDERR Dumper($row);
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/prompt.tmpl", die_on_bad_params => 0 );
+	    
+	    $template->param(
+		nav		=> @nav,
+		nonce           => $env->{'plack.nonce'},
+		agent_id        => $agent,
+		prompt          => $row->{prompt},
+		post_prompt     => $row->{post_prompt}
+		);
+	    
+	    $res->body( $template->output );
+	    
+	    $sth->finish;
+	    
+	    $dbh->disconnect;
 
-	my $sth = $dbh->prepare($sql);
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
 
-	$sth->execute($params->{prompt}, $params->{post_prompt}, $agent) or die $DBI::errstr;
+	    $template->param(message => "You do not have permission to access this resource");
 
-	$sth->finish;
+	    $res->status(403);
 
-	$dbh->disconnect;
+	    $res->body($template->output);
 
-	my $res = Plack::Response->new( 200 );
-
-	$res->redirect( "/prompt?agent_id=$agent" );
-
-	return $res->finalize;
+	    return $res->finalize;
+	}
     }
-
-
-    my $sql = 'SELECT prompt,post_prompt FROM ai_prompt WHERE agent_id = ?';
-
-    my $sth = $dbh->prepare($sql);
-
-    $sth->execute($agent) or die $DBI::errstr;
-
-    my $row = $sth->fetchrow_hashref();
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/prompt.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav		=> @nav,
-	url             => "https://$env->{HTTP_HOST}/prompt",
-	nonce           => $env->{'plack.nonce'},
-	agent_id        => $agent,
-	prompt          => $row->{prompt},
-	post_prompt     => $row->{post_prompt}
-	);
-
-    $res->body( $template->output );
-
-    $sth->finish;
-
-    $dbh->disconnect;
-
-    return $res->finalize;
 }
 
 sub agents {
@@ -1794,7 +2434,7 @@ sub agents {
     $res->content_type( 'text/html' );
 
     if ( $method eq 'POST' ) {
-	if ( $params->{action} eq 'create' ) {
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_agents' ) ) {
 	    my $sql = "INSERT INTO ai_agent (name, description, phone_number, user_id) VALUES (?, ?, ?, ?)";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -1826,7 +2466,7 @@ sub agents {
 	    $config{AUTH_PASSWORD} = $password;
 
 	    untie %config;
-	} elsif ( $params->{action} eq 'add' ) {
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_agents' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_agent.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
@@ -1840,7 +2480,7 @@ sub agents {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_update,update_agents' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_agent.tmpl", die_on_bad_params => 0 );
 
 	    my $sql = "SELECT * FROM ai_agent WHERE id = ?";
@@ -1867,14 +2507,14 @@ sub agents {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_agents' ) ) {
 	    my $sql = "UPDATE ai_agent SET name = ?, description = ?, phone_number = ?  WHERE id = ?";
 	    my $sth = $dbh->prepare( $sql );
 
 	    $sth->execute( $params->{name}, $params->{description}, $params->{phone_number}, $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete' ) {
+	} elsif ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_agents' ) ) {
 	    my $session = $env->{'psgix.session'};
 
 	    if ( $session->{is_admin} ) {
@@ -1895,44 +2535,59 @@ sub agents {
 
 	$dbh->disconnect;
 
-	my $res = Plack::Response->new( 200 );
+	$res->status( 302 );
 
 	$res->redirect( "/" );
 
 	return $res->finalize;
-    }
-
-    my $sql;
-    my $sth;
-
-    if ($session->{is_admin} || $session->{is_viewer}) {
-	$sql = "SELECT * FROM ai_agent ORDER BY created DESC";
-	$sth = $dbh->prepare( $sql );
     } else {
-	$sql = "SELECT * FROM ai_agent WHERE user_id = ? ORDER BY created DESC";
-	$sth = $dbh->prepare( $sql );
-	$sth->bind_param(1, $session->{user_id});
+
+	if ( check_role( $session, 'admin_view,view_agents') ) {
+	    my $sql;
+	    my $sth;
+
+	    if ( check_role( $session, 'admin_view') ) {
+		$sql = "SELECT * FROM ai_agent ORDER BY created DESC";
+		$sth = $dbh->prepare( $sql );
+	    } else {
+		$sql = "SELECT * FROM ai_agent WHERE user_id = ? ORDER BY created DESC";
+		$sth = $dbh->prepare( $sql );
+		$sth->bind_param(1, $session->{user_id});
+	    }
+
+	    $sth->execute or die "Couldn't execute statement: $DBI::errstr";
+
+	    my $agents = $sth->fetchall_arrayref({});
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/agents.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => $session->{is_admin} ? @admin_nav : @user_nav,
+		nonce		=> $env->{'plack.nonce'},
+		url             => "https://$env->{HTTP_HOST}",
+		agents          => $agents,
+		is_admin	=> $session->{is_admin},
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    $sth->execute or die "Couldn't execute statement: $DBI::errstr";
-
-    my $agents = $sth->fetchall_arrayref({});
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/agents.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav             => $session->{is_admin} ? @admin_nav : @user_nav,
-	nonce		=> $env->{'plack.nonce'},
-	url             => "https://$env->{HTTP_HOST}",
-	agents          => $agents,
-	is_admin	=> $session->{is_admin},
-	);
-
-    $res->body( $template->output );
-
-    $dbh->disconnect;
-
-    return $res->finalize;
 }
 
 sub hints {
@@ -1954,14 +2609,14 @@ sub hints {
     $res->content_type( 'text/html' );
 
     if ( $method eq 'POST' ) {
-	if ( $params->{action} eq 'create' ) {
+	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_hints' ) ) {
 	    my $sql = "INSERT INTO ai_hints (hint, agent_id) VALUES (?, ?)";
 	    my $sth = $dbh->prepare( $sql );
 
 	    $sth->execute( $params->{hint}, $agent ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'add' ) {
+	} elsif ( $params->{action} eq 'add' && check_role( $session, 'admin_create,create_hints' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_hint.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
@@ -1975,7 +2630,7 @@ sub hints {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session, 'admin_update,update_hints' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_hint.tmpl", die_on_bad_params => 0 );
 
 	    my $sql = "SELECT * FROM ai_hints WHERE id = ?";
@@ -2001,65 +2656,69 @@ sub hints {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
+	} elsif ( $params->{action} eq 'update' && check_role( $session, 'admin_update,update_hints' ) ) {
 	    my $sql = "UPDATE ai_hints SET hint = ? WHERE id = ?";
 	    my $sth = $dbh->prepare( $sql );
 
 	    $sth->execute( $params->{hint}, $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete' ) {
-	    my $session = $env->{'psgix.session'};
+	} elsif ( $params->{action} eq 'delete'  && check_role( $session, 'admin_delete,delete_hints' ) ) {
+	    my $sql = "DELETE FROM ai_hints WHERE id = ?";
+	    my $sth = $dbh->prepare( $sql );
 
-	    if ( $session->{is_admin} ) {
-		my $sql = "DELETE FROM ai_hints WHERE id = ?";
-		my $sth = $dbh->prepare( $sql );
-
-		$sth->execute( $params->{id} ) or die $DBI::errstr;
-		$sth->finish;
-	    } else {
-		$res->status( 403 );
-
-		$res->body( "You are not authorized to delete hints" );
-
-		$dbh->disconnect;
-
-		return $res->finalize;
-	    }
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+	    $sth->finish;
 	}
 
 	$dbh->disconnect;
 
+	$res->status( 302 );
+
 	$res->redirect( "/hints?agent_id=$agent&agent_name=$agent_name" );
 
 	return $res->finalize;
+    } else {
+	if ( check_role($session, 'admin_view,view_hints') ) {
+	    my $sql = "SELECT * FROM ai_hints WHERE agent_id = ? ORDER BY created DESC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $agent ) or die $DBI::errstr;
+
+	    my $hints = $sth->fetchall_arrayref({});
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/hints.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nonce           => $env->{'plack.nonce'},
+		agent_id        => $agent,
+		agent_name      => $agent_name,
+		hints           => $hints
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $sql = "SELECT * FROM ai_hints WHERE agent_id = ? ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $sql );
-
-    $sth->execute( $agent ) or die $DBI::errstr;
-
-    my $hints = $sth->fetchall_arrayref({});
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/hints.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nonce           => $env->{'plack.nonce'},
-	agent_id        => $agent,
-	agent_name      => $agent_name,
-	hints           => $hints
-	);
-
-    $res->body( $template->output );
-
-    $dbh->disconnect;
-
-    return $res->finalize;
 }
 
-sub languages {
+sub language {
     my $env        = shift;
     my $req        = Plack::Request->new( $env );
     my $agent      = $req->param( 'agent_id' );
@@ -2078,15 +2737,15 @@ sub languages {
     $res->content_type( 'text/html' );
 
     if ( $method eq 'POST' ) {
-	if ( $params->{action} eq 'create' ) {
-	    my $sql = "INSERT INTO ai_language (agent_id, code, name, voice, engine, fillers) VALUES (?, ?, ?, ?, ?, ?)";
+	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_languages' ) ) {
+	    my $sql = "INSERT INTO ai_language (agent_id, code, name, voice, engine, fillers, language_order) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
 	    my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $agent, $params->{code}, $params->{name}, $params->{voice}, $params->{engine}, $params->{fillers} ) or die $DBI::errstr;
+	    $sth->execute( $agent, $params->{code}, $params->{name}, $params->{voice}, $params->{engine}, $params->{fillers}, $params->{language_order} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'add' ) {
+	} elsif ( $params->{action} eq 'add'  && check_role( $session, 'admin_create,create_languages' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_language.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
@@ -2101,7 +2760,7 @@ sub languages {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session, 'admin_update,update_languages' ) ) {
 	    my $sql = "SELECT * FROM ai_language WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2126,65 +2785,68 @@ sub languages {
 	    $res->body( $template->output );
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
-	    my $sql = "UPDATE ai_language SET code = ?, name = ?, voice = ?, engine = ?, fillers = ? WHERE id = ?";
+	} elsif ( $params->{action} eq 'update' && check_role( $session, 'admin_update,update_languages' ) ) {
+	    my $sql = "UPDATE ai_language SET code = ?, name = ?, voice = ?, engine = ?, fillers = ?, language_order = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $params->{code}, $params->{name}, $params->{voice}, $params->{engine}, $params->{fillers}, $params->{id} ) or die $DBI::errstr;
+	    $sth->execute( $params->{code}, $params->{name}, $params->{voice}, $params->{engine}, $params->{fillers}, $params->{language_order}, $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete' ) {
+	} elsif ( $params->{action} eq 'delete' && check_role( $session, 'admin_delete,delete_languages' ) ) {
 	    my $session = $env->{'psgix.session'};
+	    my $sql = "DELETE FROM ai_language WHERE id = ?";
+	    my $sth = $dbh->prepare( $sql );
 
-	    if ( $session->{is_admin} ) {
-		my $sql = "DELETE FROM ai_language WHERE id = ?";
-		my $sth = $dbh->prepare( $sql );
-
-		$sth->execute( $params->{id} ) or die $DBI::errstr;
-		$sth->finish;
-	    } else {
-		$res->status( 403 );
-
-		$res->body( "You are not authorized to delete languages." );
-
-		$dbh->disconnect;
-
-		return $res->finalize;
-	    }
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+	    $sth->finish;
 	}
 
 	$dbh->disconnect;
 
-	$res->redirect( "/languages?agent_id=$agent&agent_name=$agent_name" );
+	$res->redirect( "/language?agent_id=$agent&agent_name=$agent_name" );
 
 	return $res->finalize;
+    } else {
+	if ( check_role( $session, 'admin_view,view_languages' ) ) {
+	    my $sql = "SELECT * FROM ai_language WHERE agent_id = ? ORDER BY language_order ASC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $agent ) or die "Couldn't execute statement: $DBI::errstr";
+
+	    my $languages = $sth->fetchall_arrayref({});
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/language.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => $session->{is_admin} ? @nav : @user_nav,
+		nonce		=> $env->{'plack.nonce'},
+		url             => "https://$env->{HTTP_HOST}",
+		agent_id        => $agent,
+		agent_name      => $agent_name,
+		languages       => $languages
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $sql = "SELECT * FROM ai_language WHERE agent_id = ? ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $sql );
-
-    $sth->execute( $agent ) or die "Couldn't execute statement: $DBI::errstr";
-
-    my $languages = $sth->fetchall_arrayref({});
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/languages.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav             => $session->{is_admin} ? @nav : @user_nav,
-	nonce		=> $env->{'plack.nonce'},
-	url             => "https://$env->{HTTP_HOST}",
-	agent_id        => $agent,
-	agent_name      => $agent_name,
-	languages       => $languages
-	);
-
-    $res->body( $template->output );
-
-    $dbh->disconnect;
-
-    return $res->finalize;
 }
 
 sub pronounce {
@@ -2208,7 +2870,7 @@ sub pronounce {
     if ( $method eq 'POST' ) {
 	$params->{ignore_case} = $params->{ignore_case} ? 1 : 0;
 
-	if ( $params->{action} eq 'create' ) {
+	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_pronounce' ) ) {
 	    my $sql = "INSERT INTO ai_pronounce (agent_id, ignore_case, replace_this, replace_with) VALUES (?, ?, ?, ?)";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2216,7 +2878,7 @@ sub pronounce {
 	    $sth->execute( $agent, $params->{ignore_case}, $params->{replace_this}, $params->{replace_with} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'add' ) {
+	} elsif ( $params->{action} eq 'add' && check_role( $session, 'admin_create,create_pronounce' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_pronounce.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
@@ -2231,7 +2893,7 @@ sub pronounce {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session, 'admin_update,update_pronounce' ) ) {
 	    my $sql = "SELECT * FROM ai_pronounce WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2249,7 +2911,6 @@ sub pronounce {
 	    $template->param(
 		nav             => $session->{is_admin} ? @nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		url             => "https://$env->{HTTP_HOST}",
 		agent_id        => $agent,
 		agent_name      => $agent_name
 		);
@@ -2259,7 +2920,7 @@ sub pronounce {
 	    $res->body( $template->output );
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
+	} elsif ( $params->{action} eq 'update' && check_role( $session, 'admin_update,update_pronounce' ) ) {
 	    my $sql = "UPDATE ai_pronounce SET ignore_case = ?, replace_this = ?, replace_with = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2267,22 +2928,14 @@ sub pronounce {
 	    $sth->execute( $params->{ignore_case}, $params->{replace_this}, $params->{replace_with}, $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete' ) {
+	} elsif ( $params->{action} eq 'delete' && check_role( $session, 'admin_delete,delete_pronounce' ) ) {
 	    my $session = $env->{'psgix.session'};
 
-	    if ( $session->{is_admin} ) {
-		my $sql = "DELETE FROM ai_pronounce WHERE id = ?";
-		my $sth = $dbh->prepare( $sql );
+	    my $sql = "DELETE FROM ai_pronounce WHERE id = ?";
+	    my $sth = $dbh->prepare( $sql );
 
-		$sth->execute( $params->{id} ) or die $DBI::errstr;
-		$sth->finish;
-	    } else {
-		$res->status( 403 );
-
-		$res->body( "You are not authorized to delete pronounce." );
-
-		return $res->finalize;
-	    }
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+	    $sth->finish;
 	}
 
 	$dbh->disconnect;
@@ -2290,39 +2943,53 @@ sub pronounce {
 	$res->redirect( "/pronounce?agent_id=$agent&agent_name=$agent_name" );
 
 	return $res->finalize;
+    } else {
+
+	if ( check_role ($session, 'admin_view,view_pronounce' ) ) {
+	    my $sql = "SELECT * FROM ai_pronounce WHERE agent_id = ? ORDER BY created DESC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $agent ) or die $DBI::errstr;
+
+	    my $pronounce = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/pronounce.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => @nav,
+		nonce		=> $env->{'plack.nonce'},
+		agent_id        => $agent,
+		agent_name      => $agent_name,
+		pronounce       => $pronounce
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $sql = "SELECT * FROM ai_pronounce WHERE agent_id = ? ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $sql );
-
-    $sth->execute( $agent ) or die $DBI::errstr;
-
-    my $pronounce = $sth->fetchall_arrayref({});
-
-    $sth->finish;
-
-    $dbh->disconnect;
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/pronounce.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav             => @nav,
-	nonce		=> $env->{'plack.nonce'},
-	url             => "https://$env->{HTTP_HOST}",
-	agent_id        => $agent,
-	agent_name      => $agent_name,
-	pronounce       => $pronounce
-	);
-
-    $res->body( $template->output );
-
-    $dbh->disconnect;
-
-    return $res->finalize;
 }
 
-sub functions {
+sub function {
     my $env    = shift;
     my $req    = Plack::Request->new( $env );
     my $agent  = $req->param( 'agent_id' );
@@ -2345,7 +3012,7 @@ sub functions {
 
     if ( $method eq 'POST' ) {
 
-	if ( $params->{action} eq 'create' ) {
+	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_functions' ) ) {
 	    my $sql = "INSERT INTO ai_function (agent_id, name, active, purpose, code) VALUES (?, ?, ?, ?, ?)";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2355,7 +3022,13 @@ sub functions {
 	    $sth->execute( $agent, $params->{name}, $params->{active}, $params->{purpose}, $params->{code} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'add' ) {
+
+	    $dbh->disconnect;
+
+	    $res->redirect( "/function?agent_id=$agent" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session, 'admin_create,create_functions' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_function.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
@@ -2369,7 +3042,7 @@ sub functions {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session, 'admin_update,update_functions' ) ) {
 	    my $sql = "SELECT * FROM ai_function WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2385,7 +3058,6 @@ sub functions {
 	    $template->param(
 		nav             => @nav,
 		nonce		=> $env->{'plack.nonce'},
-		url             => "https://$env->{HTTP_HOST}/functions?agent_id=$agent",
 		agent_id        => $agent,
 		);
 
@@ -2398,7 +3070,7 @@ sub functions {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
+	} elsif ( $params->{action} eq 'update'  && check_role( $session, 'admin_update,update_functions' ) ) {
 	    my $sql = "UPDATE ai_function SET name = ?, active = ?, purpose = ?, code = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2409,12 +3081,12 @@ sub functions {
 
 	    my $res = Plack::Response->new( 302 );
 
-	    $res->redirect( "/functions?agent_id=$agent" );
+	    $res->redirect( "/function?agent_id=$agent" );
 
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete' ) {
+	} elsif ( $params->{action} eq 'delete'  && check_role( $session, 'admin_delete,delete_function' )) {
 	    my $sql = "DELETE FROM ai_function WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2425,39 +3097,199 @@ sub functions {
 
 	    my $res = Plack::Response->new( 302 );
 
-	    $res->redirect( "/functions?agent_id=$agent" );
+	    $res->redirect( "/function?agent_id=$agent" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    } else {
+	if ( check_role( $session, 'admin_view,view_functions' ) ) {
+	    my $sql = "SELECT * FROM ai_function WHERE agent_id = ? ORDER BY created DESC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $agent ) or die $DBI::errstr;
+
+	    my $functions = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/function.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav       => @nav,
+		nonce	  => $env->{'plack.nonce'},
+		agent_id  => $agent,
+		functions => $functions
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
 
 	    $dbh->disconnect;
 
 	    return $res->finalize;
 	}
     }
+}
 
-    my $sql = "SELECT * FROM ai_function WHERE agent_id = ? ORDER BY created DESC";
+sub feature {
+    my $env    = shift;
+    my $req    = Plack::Request->new( $env );
+    my $agent  = $req->param( 'agent_id' );
+    my $method = $req->method;
+    my $res    = Plack::Response->new( 200 );
+    my $params = $req->parameters;
 
-    my $sth = $dbh->prepare( $sql );
+    my $session = $env->{'psgix.session'};
 
-    $sth->execute( $agent ) or die $DBI::errstr;
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    my $functions = $sth->fetchall_arrayref({});
+    $res->content_type( 'text/html' );
 
-    $sth->finish;
+    if ( $method eq 'POST' ) {
+	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_features' ) ) {
+	    my $sql = "INSERT INTO ai_features ( created, description ) VALUES ( now(), ?)";
 
-    my $template = HTML::Template::Expr->new( filename => "/app/template/functions.tmpl", die_on_bad_params => 0 );
+	    my $sth = $dbh->prepare( $sql );
 
-    $template->param(
-	nav             => @nav,
-	nonce		=> $env->{'plack.nonce'},
-	url             => "https://$env->{HTTP_HOST}",
-	agent_id        => $agent,
-	functions       => $functions
-	);
+	    $sth->execute( $params->{description} ) or die $DBI::errstr;
 
-    $res->body( $template->output );
+	    $sth->finish;
 
-    $dbh->disconnect;
+	    $dbh->disconnect;
 
-    return $res->finalize;
+	    $res->redirect( "/feature" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session, 'admin_create,create_features' ) ) {
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_feature.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => @admin_nav,
+		nonce		=> $env->{'plack.nonce'},
+		agent_id        => $agent,
+		);
+	    
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'edit' && check_role( $session, 'admin_update,update_features' ) ) {
+	    my $sql = "SELECT * FROM ai_features WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    my $feature = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_feature.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => $session->{is_admin} ? @admin_nav : @nav,
+		nonce		=> $env->{'plack.nonce'},
+		);
+	    
+	    $template->param( %$feature );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'update'  && check_role( $session, 'admin_update,update_features' ) ) {
+	    my $sql = "UPDATE ai_features SET description = ?, code = ? WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{description}, $params->{code}, $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    my $res = Plack::Response->new( 302 );
+
+	    $res->redirect( "/feature" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'delete'  && check_role( $session, 'admin_delete,delete_feature' )) {
+	    my $sql = "DELETE FROM ai_features WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    my $res = Plack::Response->new( 302 );
+
+	    $res->redirect( "/feature" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    } else {
+	if ( check_role( $session, 'admin_view,view_features' ) ) {
+	    my $sql = "SELECT * FROM ai_features";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute() or die $DBI::errstr;
+
+	    my $features = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/features.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav       => $session->{is_admin} ? @admin_nav : @nav,
+		nonce	  => $env->{'plack.nonce'},
+		agent_id  => $agent,
+		features  => $features
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    }
 }
 
 sub functionargs {
@@ -2482,15 +3314,15 @@ sub functionargs {
     $res->content_type( 'text/html' );
 
     $params->{active_checked} = $params->{active} ? 'checked' : '';
-
+    $params->{required_checked} = $params->{required} ? 'checked' : '';
+    
     if ( $method eq 'POST' ) {
-
-	if ( $params->{action} eq 'create' ) {
-	    my $sql = "INSERT INTO ai_function_argument (function_id, agent_id, name, type, description, active) VALUES (?, ?, ?, ?, ?, ?)";
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_functionargs' ) ) {
+	    my $sql = "INSERT INTO ai_function_argument (function_id, agent_id, name, type, description, active, required) VALUES (?, ?, ?, ?, ?, ?, ?)";
 
 	    my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $params->{function_id}, $params->{agent_id}, $params->{name}, $params->{type}, $params->{description}, $params->{active} ) or die $DBI::errstr;
+	    $sth->execute( $params->{function_id}, $params->{agent_id}, $params->{name}, $params->{type}, $params->{description}, $params->{active}, $params->{required} ) or die $DBI::errstr;
 
 	    $sth->finish;
 
@@ -2499,7 +3331,7 @@ sub functionargs {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'add' ) {
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_functionargs' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_function_argument.tmpl", die_on_bad_params => 0 );
 	    print STDERR Dumper($params);
 	    $template->param(
@@ -2515,7 +3347,7 @@ sub functionargs {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_create,update_functionargs' ) ) {
 	    my $sql = "SELECT * FROM ai_function_argument WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2536,8 +3368,9 @@ sub functionargs {
 		function_name   => $functionnam
 		);
 
-	    $function_args->{active_checked} = $function_args->{active} ? 'checked' : '';
-
+	    $function_args->{active_checked}   = $function_args->{active}   ? 'checked' : '';
+	    $function_args->{required_checked} = $function_args->{required} ? 'checked' : '';
+	    
 	    $template->param( %$function_args );
 
 	    $res->body( $template->output );
@@ -2545,12 +3378,12 @@ sub functionargs {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
-	    my $sql = "UPDATE ai_function_argument SET name = ?, type = ?, description = ?, active = ? WHERE id = ?";
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_create,update_functionargs' ) ) {
+	    my $sql = "UPDATE ai_function_argument SET name = ?, type = ?, description = ?, active = ?, required = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $params->{name}, $params->{type}, $params->{description}, $params->{active}, $params->{id} ) or die $DBI::errstr;
+	    $sth->execute( $params->{name}, $params->{type}, $params->{description}, $params->{active}, $params->{required}, $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
 
@@ -2561,7 +3394,7 @@ sub functionargs {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete' ) {
+	} elsif ( $params->{action} eq 'delete'  && check_role( $session ,'admin_delete,delete_functionargs' )) {
 	    my $sql = "DELETE FROM ai_function_argument WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2578,44 +3411,371 @@ sub functionargs {
 
 	    return $res->finalize;
 	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_functionargs' ) ) {
+	    my $sql = "SELECT * FROM ai_function_argument WHERE function_id = ? AND agent_id = ? ORDER BY created DESC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $function_id, $agent ) or die $DBI::errstr;
+
+	    my $functionargs = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/function_arguments.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav            => @nav,
+		nonce	   => $env->{'plack.nonce'},
+		agent_id       => $agent,
+		function_id    => $function_id,
+		functionargs   => $functionargs,
+		function_name  => $functionnam
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $sql = "SELECT * FROM ai_function_argument WHERE function_id = ? AND agent_id = ? ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $sql );
-
-    $sth->execute( $function_id, $agent ) or die $DBI::errstr;
-
-    my $functionargs = $sth->fetchall_arrayref({});
-
-    $sth->finish;
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/function_arguments.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav             => @nav,
-	nonce		=> $env->{'plack.nonce'},
-	agent_id        => $agent,
-	function_id     => $function_id,
-	functionargs    => $functionargs,
-	function_name   => $functionnam
-	);
-
-    $res->body( $template->output );
-
-    $dbh->disconnect;
-
-    return $res->finalize;
 }
 
-sub contexts {
+sub featuretoggles {
+    my $env          = shift;
+    my $req          = Plack::Request->new( $env );
+    my $feature_id   = $req->param( 'feature_id' );
+    my $featurenam   = $req->param( 'feature_name' );
+    my $method       = $req->method;
+    my $res          = Plack::Response->new( 200 );
+    my $params       = $req->parameters;
+
+    my $session = $env->{'psgix.session'};
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
+
+
+    $res->content_type( 'text/html' );
+
+    if ( $method eq 'POST' ) {
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_featuretoggles' ) ) {
+	    my $sql = "INSERT INTO ai_feature_toggles ( feature_id, toggle, description, toggle_order ) VALUES ( ?, ?, ?, ? )";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $feature_id, $params->{toggle}, $params->{description}, $params->{toggle_order} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    $res->redirect( "/featuretoggles?feature_id=$feature_id&feature_name=$featurenam" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_featuretoggles' ) ) {
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_feature_toggle.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => @nav,
+		nonce		=> $env->{'plack.nonce'},
+		feature_id      => $feature_id,
+		feature_name    => $featurenam
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_create,update_featuretoggles' ) ) {
+	    my $sql = "SELECT * FROM ai_feature_toggles WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    my $feature_toggles = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_feature_toggle.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => @nav,
+		nonce		=> $env->{'plack.nonce'},
+		feature_id      => $feature_id,
+		feature_name    => $featurenam
+		);
+
+	    $template->param( %$feature_toggles );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_create,update_featuretoggles' ) ) {
+	    my $sql = "UPDATE ai_feature_toggles SET toggle = ?, description = ?, toggle_order = ? WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{toggle}, $params->{description}, $params->{toggle_order}, $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    my $res = Plack::Response->new( 302 );
+
+	    $res->redirect( "/featuretoggles?feature_id=$feature_id&feature_name=$featurenam" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'delete'  && check_role( $session ,'admin_delete,delete_featuretoggles' )) {
+	    my $sql = "DELETE FROM ai_feature_toggles WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    my $res = Plack::Response->new( 302 );
+
+	    $res->redirect( "/featuretoggles?feature_id=$feature_id&feature_name=$featurenam" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_featuretoggles' ) ) {
+	    my $sql = "SELECT * FROM ai_feature_toggles WHERE feature_id = ? ORDER BY toggle_order ASC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $feature_id ) or die $DBI::errstr;
+
+	    my $featuretoggles = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/feature_toggle.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => @nav,
+		nonce	        => $env->{'plack.nonce'},
+		feature_id      => $feature_id,
+		feature_name    => $featurenam,
+		featuretoggles  => $featuretoggles
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    }
+}
+
+sub featurestrings {
+    my $env          = shift;
+    my $req          = Plack::Request->new( $env );
+    my $feature_id   = $req->param( 'feature_id' );
+    my $featurenam   = $req->param( 'feature_name' );
+    my $method       = $req->method;
+    my $res          = Plack::Response->new( 200 );
+    my $params       = $req->parameters;
+
+    my $session = $env->{'psgix.session'};
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
+
+
+    $res->content_type( 'text/html' );
+
+    $params->{required_checked} = $params->{required} ? 'checked' : '';
+    
+    if ( $method eq 'POST' ) {
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_featurestrings' ) ) {
+	    my $sql = "INSERT INTO ai_feature_strings ( string, description, string_order, required, feature_id ) VALUES ( ?, ?, ?, ?, ? )";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{string}, $params->{description}, $params->{string_order}, $params->{required}, $feature_id ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    $res->redirect( "/featurestrings?feature_id=$feature_id&feature_name=$featurenam" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_featurestrings' ) ) {
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_feature_string.tmpl", die_on_bad_params => 0 );
+	    print STDERR Dumper($params);
+	    $template->param(
+		nav             => @nav,
+		nonce		=> $env->{'plack.nonce'},
+		feature_id      => $feature_id,
+		feature_name    => $featurenam,
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_create,update_featurestrings' ) ) {
+	    my $sql = "SELECT * FROM ai_feature_strings WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    my $feature_strings = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_feature_string.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav             => @nav,
+		nonce		=> $env->{'plack.nonce'},
+		feature_id      => $feature_id,
+		feature_name    => $featurenam,
+		);
+
+	    $feature_strings->{required_checked} = $feature_strings->{required} ? 'checked' : '';
+	    
+	    $template->param( %$feature_strings );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_create,update_featurestrings' ) ) {
+	    my $sql = "UPDATE ai_feature_strings SET string = ?, description = ?, string_order = ?, required = ? WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{string}, $params->{description}, $params->{string_order}, $params->{required}, $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    my $res = Plack::Response->new( 302 );
+
+	    $res->redirect( "/featurestrings?feature_id=$feature_id&feature_name=$featurenam" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'delete'  && check_role( $session ,'admin_delete,delete_featurestrings' )) {
+	    my $sql = "DELETE FROM ai_feature_strings WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    my $res = Plack::Response->new( 302 );
+
+	    $res->redirect( "/featurestrings?feature_id=$feature_id&feature_name=$featurenam" );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_featurestrings' ) ) {
+	    my $sql = "SELECT * FROM ai_feature_strings WHERE feature_id = ? ORDER BY string_order";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $feature_id ) or die $DBI::errstr;
+
+	    my $featurestrings = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/feature_strings.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav            => @nav,
+		nonce	   => $env->{'plack.nonce'},
+		feature_id     => $feature_id,
+		feature_name   => $featurenam,
+		featurestrings => $featurestrings
+		);
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status( 403 );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    }
+}
+
+sub context {
     my $env    = shift;
     my $req    = Plack::Request->new( $env );
     my $agent  = $req->param( 'agent_id' );
     my $method = $req->method;
     my $params = $req->parameters;
+    my $res    = Plack::Response->new( 200 );
 
     my $session = $env->{'psgix.session'};
+
+    $res->content_type( 'text/html' );
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -2629,7 +3789,7 @@ sub contexts {
 
 	$params->{full_reset}  = $params->{full_reset}  ? 1 : 0;
 
-	if ( $params->{action} eq 'create' ) {
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_contexts' ) ) {
 	    my $sql = "INSERT INTO ai_context (agent_id, name, pattern, toggle_function, consolidate, full_reset, user_prompt, system_prompt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2639,16 +3799,16 @@ sub contexts {
 	    $sth->finish;
 
 	    $dbh->disconnect;
-	} elsif ( $params->{action} eq 'add' ) {
-	    my $res = Plack::Response->new( 200 );
 
-	    $res->content_type( 'text/html' );
+	    $res->redirect( "/context?agent_id=$agent" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_contexts' ) ) {
 
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_context.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
 		nav      => @nav,
-		url      => "https://$env->{HTTP_HOST}",
 		nonce    => $env->{'plack.nonce'},
 		agent_id => $agent,
 		);
@@ -2656,11 +3816,7 @@ sub contexts {
 	    $res->body( $template->output );
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' ) {
-	    my $res = Plack::Response->new( 200 );
-
-	    $res->content_type( 'text/html' );
-
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_update,update_contexts' ) ) {
 	    my $sql = "SELECT * FROM ai_context WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2678,7 +3834,6 @@ sub contexts {
 
 	    $template->param(
 		nav      => @nav,
-		url      => "https://$env->{HTTP_HOST}",
 		nonce    => $env->{'plack.nonce'},
 		agent_id => $agent,
 		);
@@ -2690,7 +3845,7 @@ sub contexts {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_contexts' ) ) {
 	    my $sql = "UPDATE ai_context SET name = ?, pattern = ?, toggle_function = ?, consolidate = ?, full_reset = ? , user_prompt = ?, system_prompt = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2701,12 +3856,10 @@ sub contexts {
 
 	    $dbh->disconnect;
 
-	    my $res = Plack::Response->new( 302 );
-
-	    $res->redirect( "/contexts?agent_id=$agent" );
+	    $res->redirect( "/context?agent_id=$agent" );
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete' ) {
+	} elsif ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_contexts' ) ) {
 	    my $sql = "DELETE FROM ai_context WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2716,43 +3869,197 @@ sub contexts {
 	    $sth->finish;
 
 	    $dbh->disconnect;
-	    my $res = Plack::Response->new( 302 );
 
-	    $res->redirect( "/contexts?agent_id=$agent" );
+	    $res->redirect( "/context?agent_id=$agent" );
 
 	    return $res->finalize;
 	}
-
     } else {
-	my $res = Plack::Response->new( 200 );
+	if ( check_role( $session ,'admin_view,view_contexts' ) ) {
+	    my $sql = "SELECT * FROM ai_context WHERE agent_id = ? ORDER BY created DESC";
 
-	$res->content_type( 'text/html' );
+	    my $sth = $dbh->prepare( $sql );
 
-	my $sql = "SELECT * FROM ai_context WHERE agent_id = ? ORDER BY created DESC";
+	    $sth->execute( $agent ) or die $DBI::errstr;
 
-	my $sth = $dbh->prepare( $sql );
+	    my $contexts = $sth->fetchall_arrayref({});
 
-	$sth->execute( $agent ) or die $DBI::errstr;
+	    $sth->finish;
 
-	my $contexts = $sth->fetchall_arrayref({});
+	    $dbh->disconnect;
 
-	$sth->finish;
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/context.tmpl", die_on_bad_params => 0 );
 
-	$dbh->disconnect;
+	    $template->param(
+		nav      => @nav,
+		nonce    => $env->{'plack.nonce'},
+		agent_id => $agent,
+		contexts => $contexts
+		);
 
-	my $template = HTML::Template::Expr->new( filename => "/app/template/contexts.tmpl", die_on_bad_params => 0 );
+	    $res->body( $template->output );
 
-	$template->param(
-	    nav      => @nav,
-	    url      => "https://$env->{HTTP_HOST}",
-	    nonce    => $env->{'plack.nonce'},
-	    agent_id => $agent,
-	    contexts => $contexts
-	    );
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
 
-	$res->body( $template->output );
+	    $template->param(message => "You do not have permission to access this resource");
 
-	return $res->finalize;
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
+    }
+}
+
+sub step {
+    my $env    = shift;
+    my $req    = Plack::Request->new( $env );
+    my $agent  = $req->param( 'agent_id' );
+    my $method = $req->method;
+    my $params = $req->parameters;
+    my $res    = Plack::Response->new( 200 );
+
+    my $session = $env->{'psgix.session'};
+
+    $res->content_type( 'text/html' );
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
+
+    if ( $method eq 'POST' ) {
+
+	$params->{ai_step_b2b_functions} = $params->{ai_step_b2b_functions} ? 1 : 0;
+
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_step' ) ) {
+	    my $sql = "INSERT INTO ai_steps (agent_id, ai_step_pattern, ai_step_response, ai_step_b2b_functions, toggle_function, custom_action) VALUES ( ?, ?, ?, ?, ?, ? )";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $agent, $params->{ai_step_pattern}, $params->{ai_step_response}, $params->{ai_step_b2b_functions}, $params->{toggle_function}, $params->{custom_action} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    $res->redirect( "/step?agent_id=$agent" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_step' ) ) {
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_step.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav      => @nav,
+		nonce    => $env->{'plack.nonce'},
+		agent_id => $agent,
+		);
+
+	    $res->body( $template->output );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_update,update_step' ) ) {
+	    my $sql = "SELECT * FROM ai_steps WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    my $step = $sth->fetchrow_hashref;
+
+	    $sth->finish;
+
+	    $step->{ai_step_b2b_functions_checked} = $step->{ai_step_b2b_functions} ? 'checked' : '';
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_step.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav      => @nav,
+		nonce    => $env->{'plack.nonce'},
+		agent_id => $agent,
+		);
+
+	    $template->param( %$step );
+
+	    $res->body( $template->output );
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_step' ) ) {
+	    my $sql = "UPDATE ai_steps SET ai_step_pattern = ?, ai_step_response = ?, ai_step_b2b_functions = ?, toggle_function = ?, custom_action = ? WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{ai_step_pattern}, $params->{ai_step_response}, $params->{ai_step_b2b_functions}, $params->{toggle_function}, $params->{custom_action}, $params->{id} ) or die $DBI::errstr;
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    $res->redirect( "/step?agent_id=$agent" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_step' ) ) {
+	    my $sql = "DELETE FROM ai_steps WHERE id = ?";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $params->{id} ) or die $DBI::errstr;
+
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    $res->redirect( "/step?agent_id=$agent" );
+
+	    return $res->finalize;
+	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_step' ) ) {
+	    my $sql = "SELECT * FROM ai_steps WHERE agent_id = ? ORDER BY ai_step_pattern ASC";
+
+	    my $sth = $dbh->prepare( $sql );
+
+	    $sth->execute( $agent ) or die $DBI::errstr;
+
+	    my $steps = $sth->fetchall_arrayref({});
+
+	    $sth->finish;
+
+	    $dbh->disconnect;
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/step.tmpl", die_on_bad_params => 0 );
+
+	    $template->param(
+		nav      => @nav,
+		nonce    => $env->{'plack.nonce'},
+		agent_id => $agent,
+		steps => $steps
+		);
+
+	    $res->body( $template->output );
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
 }
 
@@ -2774,48 +4081,46 @@ sub users {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
     if ( $method eq 'POST' ) {
-	$params->{totp_enabled} = $params->{totp_enabled} ? 1 : 0;
 	$params->{is_admin}     = $params->{is_admin}     ? 1 : 0;
 	$params->{is_viewer}    = $params->{is_viewer}    ? 1 : 0;
 
-	if ( $params->{action} eq 'create' ) {
-	    my $sql = "INSERT INTO ai_users (username, password, first_name, last_name, email, phone_number, totp_secret, totp_enabled, is_admin, is_viewer) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-	    my $gen = new Authen::TOTP( secret => $ENV{TOTP_SECRET} );
+	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_users' ) ) {
+	    my $sql = "INSERT INTO ai_users (username, password, first_name, last_name, email, phone_number, is_admin, is_viewer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
 	    my $salt = substr(generate_nonce(), 0, 16);
 
 	    my $bcrypt_hash = bcrypt( $params->{password}, '2b', 12, $salt );
 
-	    my $secret = $gen->secret();
-
-	    my $uri = $gen->generate_otp(user => $params->{email} , issuer => "signalwire.me");
-
 	    my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $params->{username}, $bcrypt_hash, $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $secret, $params->{totp_enabled}, $params->{is_admin}, $params->{is_viewer} )
+	    $sth->execute( lc($params->{username}), $bcrypt_hash, $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $params->{is_admin}, $params->{is_viewer} )
 		or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'add' ) {
+
+	    $res->status( 302 );
+	    
+	    $res->redirect( "/users" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_users' ) ) {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_user.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
 		nav      => $session->{is_admin} ? @admin_nav : @user_nav,
-		url      => "https://$env->{HTTP_HOST}",
 		nonce    => $env->{'plack.nonce'}
 		);
 
 	    $res->body( $template->output );
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
+	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_users' ) ) {
 	    my $sql;
 
 	    if ( $params->{password} ) {
-		$sql = "UPDATE ai_users SET username = ?, password = ?, first_name = ?, last_name = ?, email = ?, phone_number = ?, totp_enabled = ?, is_admin = ?, is_viewer = ? WHERE id = ?";
+		$sql = "UPDATE ai_users SET password = ?, first_name = ?, last_name = ?, email = ?, phone_number = ?, is_admin = ?, is_viewer = ? WHERE id = ?";
 	    } else {
-		$sql = "UPDATE ai_users SET username = ?, first_name = ?, last_name = ?, email = ?, phone_number = ?, totp_enabled = ?, is_admin = ?, is_viewer = ? WHERE id = ?";
+		$sql = "UPDATE ai_users SET first_name = ?, last_name = ?, email = ?, phone_number = ?, is_admin = ?, is_viewer = ? WHERE id = ?";
 	    }
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2825,15 +4130,21 @@ sub users {
 
 		my $bcrypt_hash = bcrypt( $params->{password}, '2b', 12, $salt );
 
-		$sth->execute( $params->{username}, $bcrypt_hash, $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $params->{totp_enabled}, $params->{is_admin}, $params->{is_viewer}, $params->{id} )
+		$sth->execute( $bcrypt_hash, $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $params->{is_admin}, $params->{is_viewer}, $params->{id} )
 		    or die $DBI::errstr;
 	    } else {
-		$sth->execute( $params->{username}, $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $params->{totp_enabled}, $params->{is_admin}, $params->{is_viewer}, $params->{id} )
+		$sth->execute( $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $params->{is_admin}, $params->{is_viewer}, $params->{id} )
 		    or die $DBI::errstr;
 	    }
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete' ) {
+
+	    $res->status( 302 );
+
+	    $res->redirect( "/users" );
+
+	    return $res->finalize;
+	} elsif ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_users' ) ) {
 	    my $sql = "DELETE FROM ai_users WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2841,7 +4152,8 @@ sub users {
 	    $sth->execute( $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'edit' ) {
+	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_update,update_users' ) ) {
+	    my $totp_qrcode;
 	    my $sql = "SELECT * FROM ai_users WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -2852,16 +4164,14 @@ sub users {
 
 	    $user->{is_admin_checked}     = $user->{is_admin}     ? 'checked' : '';
 	    $user->{is_viewer_checked}    = $user->{is_viewer}    ? 'checked' : '';
-	    $user->{totp_enabled_checked} = $user->{totp_enabled} ? 'checked' : '';
 
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_user.tmpl", die_on_bad_params => 0 );
 
 	    delete $user->{password};
 
 	    $template->param(
-		nav      => $session->{is_admin} ? @admin_nav : @user_nav,
-		url      => "https://$env->{HTTP_HOST}",
-		nonce    => $env->{'plack.nonce'},
+		nav         => $session->{is_admin} ? @admin_nav : @user_nav,
+		nonce       => $env->{'plack.nonce'},
 		);
 
 	    $template->param( %$user );
@@ -2869,50 +4179,44 @@ sub users {
 	    $res->body( $template->output );
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' ) {
-	    my $sql = "UPDATE ai_users SET username = ?, password = ?, first_name = ?, last_name = ?, email = ?, phone_number = ?, totp_enabled = ?, is_admin = ?, is_viewer = ? WHERE id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $params->{username}, $params->{password}, $params->{first_name}, $params->{last_name}, $params->{email}, $params->{phone_number}, $params->{totp_enabled}, $params->{is_admin}, $params->{is_viewer}, $params->{id} )
-		or die $DBI::errstr;
-
-	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete' ) {
-	    my $sql = "DELETE FROM ai_users WHERE id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $params->{id} ) or die $DBI::errstr;
-
-	    $sth->finish;
 	}
+    } else {
+	if ( check_role( $session ,'admin_view,view_users' ) ) {
+	    my $sql = "SELECT * FROM ai_users ORDER BY created DESC";
 
-	my $res = Plack::Response->new( 302 );
+	    my $sth = $dbh->prepare( $sql );
 
-	$res->redirect( "/users" );
+	    $sth->execute() or die $DBI::errstr;
+
+	    my $users = $sth->fetchall_arrayref({});
+
+	    my $template = HTML::Template::Expr->new( filename => "/app/template/users.tmpl", die_on_bad_params => 0 );
+
+	    $dbh->disconnect;
+
+	    $template->param(
+		nav      => $session->{is_admin} ? @admin_nav : @user_nav,
+		nonce    => $env->{'plack.nonce'},
+		users    => $users
+		);
+
+	    $res->body( $template->output );
+
+	    return $res->finalize;
+	} else {
+	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	    $template->param(message => "You do not have permission to access this resource");
+
+	    $res->status(403);
+
+	    $res->body($template->output);
+
+	    $dbh->disconnect;
+
+	    return $res->finalize;
+	}
     }
-
-    my $sql = "SELECT * FROM ai_users ORDER BY created DESC";
-
-    my $sth = $dbh->prepare( $sql );
-
-    $sth->execute() or die $DBI::errstr;
-
-    my $users = $sth->fetchall_arrayref({});
-
-    my $template = HTML::Template::Expr->new( filename => "/app/template/users.tmpl", die_on_bad_params => 0 );
-
-    $template->param(
-	nav      => $session->{is_admin} ? @admin_nav : @user_nav,
-	url      => "https://$env->{HTTP_HOST}",
-	nonce    => $env->{'plack.nonce'},
-	users    => $users
-	);
-
-    $res->body( $template->output );
-
-     return $res->finalize;
 }
 
 sub debug {
@@ -2921,21 +4225,35 @@ sub debug {
     my $agent = $req->param( 'agent_id' );
     my $res   = Plack::Response->new( 200 );
 
+    my $session = $env->{'psgix.session'};
+
     $res->content_type( 'text/html' );
 
-    my $template = HTML::Template::Expr->new( filename => "/app/template/debug.tmpl", die_on_bad_params => 0 );
+    if ( check_role( $session ,'admin_view,view_debug' ) ) {
 
-    $template->param(
-	nav      => @nav,
-	nonce    => $env->{'plack.nonce'},
-	wss      => "wss://$env->{HTTP_HOST}/websocket",
-	url      => "https://$env->{HTTP_HOST}",
-	agent_id => $agent
-	);
+	my $template = HTML::Template::Expr->new( filename => "/app/template/debug.tmpl", die_on_bad_params => 0 );
 
-    $res->body( $template->output );
+	$template->param(
+	    nav      => @nav,
+	    nonce    => $env->{'plack.nonce'},
+	    wss      => "wss://$env->{HTTP_HOST}/websocket",
+	    agent_id => $agent
+	    );
 
-    return $res->finalize;
+	$res->body( $template->output );
+
+	return $res->finalize;
+    } else {
+	my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+
+	$template->param(message => "You do not have permission to access this resource");
+
+	$res->status(403);
+
+	$res->body($template->output);
+
+	return $res->finalize;
+    }
 }
 
 my $debug_app = sub {
@@ -3070,9 +4388,9 @@ my $post_app = sub {
 			     'Content-Type' => 'application/json',
 			     'Content' =>
 			     $json->encode({
-				 text => ":signalwire: :new: New Conversation https://$env->{HTTP_HOST}/agent?id=$last_insert_id&agent_id=$agent -> $raw",
-				 channel => "$config{SLACK_CHANNEL}",
-				 username => "$config{SLACK_USERNAME}",
+				 text       => ":signalwire: :new: New Conversation https://$env->{HTTP_HOST}/agent?id=$last_insert_id&agent_id=$agent -> $raw",
+				 channel    => "$config{SLACK_CHANNEL}",
+				 username   => "$config{SLACK_USERNAME}",
 				 icon_emoji => ":robot_face:"
 					   })
 		);
@@ -3088,16 +4406,16 @@ my $post_app = sub {
 	    $ua->agent('SignalWire-AI-Agent/1.0');
 
 	    my $ticket = POST("https://$config{ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/tickets.json",
-			      'Content-Type' => 'application/json',
+			      'Content-Type'  => 'application/json',
 			      'Authorization' => "$config{ZENDESK_API_KEY}",
 			      'Content' =>
 			      $json->encode({
 				  ticket => {
-				      comment => {
+				      comment  => {
 					  body => "https://$env->{HTTP_HOST}/agent?id=$last_insert_id&agent_id=$agent\n\n$raw"
 				      },
 				      priority => "normal",
-				      subject => "Call Disposition - $from",
+				      subject  => "Call Disposition - $from",
 				  }})
 		);
 
@@ -3105,7 +4423,7 @@ my $post_app = sub {
 	    broadcast_by_agent_id( $agent, 'Zendesk ticket created' );
 	}
 
-	if ( $config{SEND_SUMMARY_MESSAGE} && $config{CUSTODIAN_SMS} ) {
+	if ( $config{SEND_SUMMARY_MESSAGE} && $config{CUSTODIAN_SMS} && $config{ACCOUNT_SID} && $config{AUTH_TOKEN} && $config{SPACE_NAME} && $config{API_VERSION} ) {
 	    my $response;
 
 	    my $sw = SignalWire::RestAPI->new(
@@ -3225,10 +4543,8 @@ my $websocket_app = sub {
     return $websocket->call( $env );
 };
 
-# This is the Asset entry point for the application
 my $assets_app = Plack::App::Directory->new( root => "/app/assets" )->to_app;
 
-# This is the HTTP entry point for the application
 my $web_app = sub {
     my $env      = shift;
     my $req      = Plack::Request->new( $env );
@@ -3273,13 +4589,24 @@ my $web_app = sub {
 
 		my $user_id = $dbh->selectrow_array( "SELECT id FROM ai_users WHERE username = ?", undef, $username );
 
-		$dbh->disconnect;
-
 		$session->{is_admin}     = $admin;
 		$session->{is_viewer}    = $viewer;
 		$session->{totp_enabled} = $totp;
 		$session->{username}     = $username;
 		$session->{user_id}      = $user_id;
+
+		my $sth = $dbh->prepare("SELECT * FROM ai_user_roles WHERE user_id = ?");
+
+		$sth->execute( $user_id );
+
+		$session->{roles}  = $sth->fetchall_arrayref({});
+
+		$sth->finish;
+
+		print STDERR Dumper $session if $ENV{DEBUG};
+
+		$dbh->disconnect;
+
 
 		$res->redirect( $redirect ? $redirect : "/" );
 
@@ -3308,14 +4635,12 @@ my $web_app = sub {
 
     } elsif ( $session->{logged_in} ) {
 	if ( exists $dispatch{$method} && exists $dispatch{$method}{$path} ) {
-
 	    return $dispatch{$method}{$path}->( $env );
 	} else {
 	    my $res = Plack::Response->new( 200 );
 
 	    $res->content_type( 'text/html' );
-
-	    $res->redirect( $request ne '' ? "/logout?redirect=$request" : "/logout" );
+	    $res->redirect( "/" );
 
 	    return $res->finalize;
 	}
@@ -3382,6 +4707,27 @@ sub authenticator {
 
 my $server = builder {
 #    enable "Debug";
+    enable sub {
+	my $app = shift;
+
+	return sub {
+	    my $env     = shift;
+	    my $nonce   = generate_nonce();
+	    my $wss     = "wss://$env->{HTTP_HOST}";
+	    my $session = $env->{'psgix.session'};
+
+	    $env->{'plack.nonce'} = $nonce;
+
+	    my $res     = $app->( $env );
+
+	    if ( $env->{PATH_INFO} ) {
+		Plack::Util::header_set( $res->[1], 'Expires', 0 );
+	    }
+
+	    return $res;
+	};
+    };
+
     enable "Session", store => Plack::Session::Store::DBI->new(
 	get_dbh => sub {
 	    my $dbh = DBI->connect(
@@ -3418,28 +4764,8 @@ my $server = builder {
     };
 
     mount "/websocket" => $websocket_app;
-
-    enable sub {
-	my $app = shift;
-
-	return sub {
-	    my $env     = shift;
-	    my $nonce   = generate_nonce();
-	    my $wss     = "wss://$env->{HTTP_HOST}";
-	    my $session = $env->{'psgix.session'};
-
-	    $env->{'plack.nonce'} = $nonce;
-
-	    my $res     = $app->( $env );
-
-	    if ( $env->{PATH_INFO} ) {
-		Plack::Util::header_set( $res->[1], 'Expires', 0 );
-	    }
-
-	    return $res;
-	};
-    };
-
+    mount "/register"  => $register_app;
+    mount "/reset"     => $reset_app;
     mount "/assets"    => $assets_app;
     mount "/logout"    => $logout_app;
 
@@ -3463,12 +4789,6 @@ $dbh->disconnect;
 
 # Running the PSGI application
 my $runner = Plack::Runner->new;
-
-if ( $ENV{PLACK_DEV} ) {
-    $runner->parse_options( '-s', 'Twiggy', '-p', 9080 );
-} else {
-    $runner->parse_options( '-s', 'Twiggy' );
-}
 
 $runner->run( $server );
 
