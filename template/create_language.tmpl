@@ -13,7 +13,7 @@
   <body>
     <h2>Create Language for <TMPL_VAR name="agent_name"/></h2>
     <div class="container">
-      <form action="/languages" method="POST" accept-charset="utf-8">
+      <form action="/language" method="POST" accept-charset="utf-8">
 	<table>
 	  <tr>
 	    <th colspan="2">
@@ -62,6 +62,14 @@
 	    </td>
 	    <td style="text-align: left">
 	      <input id="fillers" style="width: 600px;" name="fillers">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="language_order">Order:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input id="language_order" name="language_order">
 	    </td>
 	  </tr>
 	  <tr>

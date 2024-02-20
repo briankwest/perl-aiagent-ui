@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Reset Password</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <TMPL_IF NAME="success">
+      <meta http-equiv="refresh" content="3;url=/login">
+    </TMPL_IF>
+  </head>
+  <body class="login-body">
+    <TMPL_INCLUDE NAME="/app/template/login_header.tmpl">
+      <div class="login-container">
+	<form action="/reset" method="POST">
+	  <table>
+	    <tr>
+	      <td colspan="2" class="created">
+		<div id="message" style="text-align: center;">
+		  <strong><TMPL_VAR NAME="message"></strong>
+		</div>
+	      </td>
+	    </tr>
+	    <TMPL_IF NAME="gettoken">
+	      <tr>
+		<td>
+		  <input type="hidden" name="action" value="gettoken">
+		  <label for="username">Username:</label>
+		</td>
+		<td>
+		  <input type="text" id="username" name="username">
+		</td>
+	      </tr>
+	    </TMPL_IF>
+	    <TMPL_IF NAME="reset">
+	      <tr>
+		<td class="created">
+		  <input type="hidden" name="action" value="doreset">
+		  <input type="hidden" name="token" value="<TMPL_VAR NAME='token'>">
+		  <input type="hidden" name="username" value="<TMPL_VAR NAME='username'>">
+		  <label for="password">New Password:</label>
+		</td>
+		<td>
+		  <input type="password" id="password" name="password">
+		</td>
+	      </tr>
+	      <tr>
+		<td class="created">
+		  <label for="password2">Confirm Password:</label>
+		</td>
+		<td>
+		  <input type="password" id="password2" name="password2">
+		</td>
+	      </tr>
+	      <tr>
+	    </TMPL_IF>
+	    <TMPL_IF NAME="reset">
+	      <tr>
+		<td colspan="2">
+		  <br/><br/>
+		  <input class="submit-button" id="submit-button" type="submit" value="Reset Password">
+		  <br/><br/>
+		</td>
+	      </tr>
+	    </TMPL_IF>
+	    <TMPL_IF NAME="gettoken">
+	      <tr>
+		<td colspan="2">
+		  <br/><br/>
+		  <input class="submit-button" id="submit-button" type="submit" value="Request Password Reset">
+		  <br/><br/>
+		</td>
+	      </tr>
+	    </TMPL_IF>
+	  </table>
+	</form>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/login_footer.tmpl">
+  </body>
+</html>

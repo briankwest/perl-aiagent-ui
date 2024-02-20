@@ -1,25 +1,25 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>SignalWire AI Agents</title>
+    <title>Features</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
     <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
-    function openPopup(agent, action, agentId) {
+    function openPopup(feature, action, featureId) {
 	event.preventDefault();
 	var width = 1200;
 	var height = 600;
 	var left = (screen.width - width) / 2;
 	var top = (screen.height - height) / 4;
 
-	var url = "/" + action + "?agent_id=" + agentId + "&agent_name=" + agent;
+	var url = "/" + action + "?feature_id=" + featureId + "&feature_name=" + feature;
 
 	var popupWindow = window.open(url, "Popup Window", 'width=' + width + ',height=' + height + ',top=' + top + ',left=' + left);
     }
     function confirmSubmit(event) {
-	var confirmAction = confirm("Are you sure you want to delete this agent?");
+	var confirmAction = confirm("Are you sure you want to delete this feature?");
 	if (!confirmAction) {
-	    event.preventDefault();
+	    event.preventDefault();  // Prevents the default action (form submission) if user cancels
 	}
     }
 
@@ -33,30 +33,27 @@
   </head>
   <body>
     <TMPL_INCLUDE NAME="/app/template/header.tmpl">
-      <h2>Agents</h2>
+      <h2>Features</h2>
       <div class="container">
 	<table class="info-table">
 	  <tr>
-	    <th>Name</th>
+	    <th>Created</th>
 	    <th>Description</th>
-	    <th>Phone Number</th>
 	    <th>Action</th>
 	  </tr>
-	  <TMPL_LOOP name="agents">
+	  <TMPL_LOOP name="features">
 	    <tr>
-	      <td><a href="/agent?agent_id=<TMPL_VAR name="id"/>"><TMPL_VAR name="name"/></a></td>
+	      <td class="created"><TMPL_VAR name="created"/></td>
 	      <td><TMPL_VAR name="description"/></td>
-	      <td class="phone-number"><TMPL_VAR name="phone_number"/></td>
-	      <td class="action">
-		<button id="hints"     onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="name"/>', 'hints',     <TMPL_VAR name="id"/>)" class="submit-button">Hints</button>&nbsp;&nbsp;
-		<button id="language"  onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="name"/>', 'language',  <TMPL_VAR name="id"/>)" class="submit-button">Language</button>&nbsp;&nbsp;
-		<button id="pronounce" onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="name"/>', 'pronounce', <TMPL_VAR name="id"/>)" class="submit-button">Pronounce</button>&nbsp;&nbsp;
-		<form action="/" accept-charset="utf-8" method="POST" class="inline-form">		
+	      <td>
+		<button id="featuretoggles"  onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="description"/>', 'featuretoggles', <TMPL_VAR name="id"/>)" class="submit-button">Toggles</button>&nbsp;&nbsp;
+		<button id="featurestrings"  onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="description"/>', 'featurestrings', <TMPL_VAR name="id"/>)" class="submit-button">Strings</button>&nbsp;&nbsp;
+		<form action="/feature" method="POST" accept-charset="utf-8" class="inline-form">
 		  <input type="hidden" name="action" value="delete">
 		  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
 		  <input type="submit" class="delete-button" id="delete-button" value="Delete">
 		</form>
-		<form action="/" accept-charset="utf-8" method="POST" class="inline-form">
+		<form action="/feature" accept-charset="utf-8" method="POST" class="inline-form">
 		  <input type="hidden" name="action" value="edit">
 		  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
 		  <input type="submit" class="add-button" id="submit-button" value="Edit">
@@ -64,15 +61,12 @@
 	      </td>
 	    </tr>
 	  </TMPL_LOOP>
-	</table>
-	<table>
 	  <tr>
-	    <td class="button">
+	    <td colspan="3" class="button">
 	      <br/><br/>
-	      <form action="/" method="POST" accept-charset="utf-8">
-		<input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+	      <form action="/feature" method="POST" accept-charset="utf-8">
 		<input type="hidden" name="action" value="add">
-		<input type="submit" value="Add Agent" class="add-button">
+		<input type="submit" value="Add Feature" class="add-button">
 	      </form>
 	    </td>
 	  </tr>

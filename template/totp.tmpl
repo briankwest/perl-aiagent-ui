@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TOTP Enablement</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+     <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+       function confirmSubmit(event) {
+       var confirmAction = confirm("Are you sure you want to disable TOTP?");
+       if (!confirmAction) {
+       event.preventDefault();
+       }
+       }
+       
+       document.addEventListener("DOMContentLoaded", function() {
+       var buttons = document.querySelectorAll(".delete-button");
+       buttons.forEach(function(button) {
+       button.addEventListener("click", confirmSubmit);
+       });
+       });
+       function closeWindow() {
+       window.close(); // Close the current browser window/tab
+       }
+     </script>
+  </head>
+  <body>
+    <h2>TOTP Enablement</h2>
+    <div class="container">
+      <table style="text-align: center">
+	<form action="/totp" method="POST" accept-charset="utf-8">
+	  <TMPL_IF name="invalid">
+	    <tr>
+	      <td colspan="2">
+		<strong class="totp-error">TOTP is invalid</strong></br><br/>
+		<button class="add-button close-button" type="button" onclick="closeWindow()">Close</button>
+	      </td>
+	    </tr>
+	  </TMPL_IF>
+	  <TMPL_IF name="disabled">
+	    <tr>
+	      <td colspan="2">
+		<strong class="totp-success">TOTP is now disabled</strong><br/><br/>
+		<button class="add-button close-button" type="button" onclick="closeWindow()">Close</button>
+	      </td>
+	    </tr>
+	  </TMPL_IF>
+	  <TMPL_IF name="valid">
+	    <tr>
+	      <td colspan="2">
+		<strong class="totp-success">TOTP is now enabled</strong><br/><br/>
+		<button class="add-button close-button" type="button" onclick="closeWindow()">Close</button>
+	      </td>
+	    </tr>
+	  </TMPL_IF>
+	  <TMPL_IF name="check">
+	    <tr>
+	      <td colspan="2">
+		<strong class="totp-success">TOTP is valid</strong><br/><br/>
+		<button class="add-button close-button" type="button" onclick="closeWindow()">Close</button>
+	      </td>
+	    </tr>
+	  </TMPL_IF>
+	  <TMPL_IF name="enable">
+	    <tr>
+	      <td class="login-label">
+		<label for="code">TOTP Code:</label>
+	      </td>
+	      <td class="login-input">
+		<input id="code" autocomplete="code" name="code" required>
+		<input type="hidden" name="base32secret" value="<TMPL_VAR NAME=base32secret>">
+		
+	      </td>
+	    </tr>
+	    <tr>
+	      <td colspan="2" class="button">
+		<img src="<TMPL_VAR NAME="qrcode">" alt="QR Code"/>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td colspan="2" class="button">
+		<br/><br/>
+		<input type="submit" value="Enable" class="add-button"> <button class="add-button close-button" type="button" onclick="closeWindow()">Close</button>
+		<br/><br/>
+	      </td>
+	    </tr>
+	  </TMPL_IF>
+	  <TMPL_IF name="enabled">
+	    <tr>
+	      <td class="login-label">
+		<label for="code">TOTP Code:</label>
+	      </td>
+	      <td class="login-input">
+		<input id="code" autocomplete="code" name="code" required>
+		<input type="hidden" name="check" value="true">
+		
+	      </td>
+	    </tr>
+	    <tr>
+	      <td colspan="2" class="button">
+		<br/><br/>
+		<input type="submit" value="Disable" value="disable" class="delete-button"> <input type="submit" value="Check" value="check" class="add-button"> <button class="add-button close-button" type="button" onclick="closeWindow()">Close</button>
+		<br/><br/>
+	      </td>
+	    </tr>
+	  </TMPL_IF>
+      	</table>
+      </form>
+    </div>
+  </body>
+</html>

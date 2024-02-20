@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+      function confirmSubmit(event) {
+      var confirmAction = confirm("Are you sure you want to delete this hint?");
+      if (!confirmAction) {
+      event.preventDefault();  // Prevents the default action (form submission) if user cancels
+      }
+      }
+      
+      document.addEventListener("DOMContentLoaded", function() {
+      var buttons = document.querySelectorAll(".delete-button");
+      buttons.forEach(function(button) {
+      button.addEventListener("click", confirmSubmit);
+      });
+      });
+      function closeWindow() {
+      window.close(); // Close the current browser window/tab
+      }
+    </script>
+  </head>
+  <body>
+    <h2>Roles for <TMPL_VAR name="username"></h2>
+    <div class="container">
+      <table class="info-table">
+	<tr colspan="2">
+	  <th>Roles</th>
+	</tr>
+	<TMPL_LOOP name="roles">
+	  <tr>
+	    <td><TMPL_VAR name="description"></td>
+	    <td>
+	      <form action="/roles" method="POST" accept-charset="utf-8" class="inline-form">
+		<input type="hidden" name="action" value="delete">
+		<input type="hidden" name="user_id" value="<TMPL_VAR name="user_id"/>">
+		<input type="hidden" name="username" value="<TMPL_VAR name="username"/>">
+		<input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		<input type="submit" class="delete-button" id="delete-button" value="Delete">
+	      </form>
+	    </td>
+	  </tr>
+	</TMPL_LOOP>
+	<tr>
+	  <td colspan="2" class="button">
+	    <form action="/roles" method="POST" accept-charset="utf-8" class="inline-form">
+	      <select id="name" name="name">
+		<TMPL_LOOP name="my_roles">
+		  <option value="<TMPL_VAR name="name">"><TMPL_VAR name="description"></option>
+		</TMPL_LOOP>
+	      </select>
+	      <input type="hidden" name="action" value="add">
+	      <input type="hidden" name="user_id" value="<TMPL_VAR name="user_id"/>">
+	      <input type="hidden" name="username" value="<TMPL_VAR name="username"/>">
+	      <br/><br/>
+	      <input type="submit" value="Add Role" class="add-button"> <button class="add-button" class="close-button" onclick="closeWindow()">Close</button>
+	      <br/><br/>
+	    </form>
+	  </td>
+	</tr>
+      </table>
+    </div>
+  </body>
+</html>

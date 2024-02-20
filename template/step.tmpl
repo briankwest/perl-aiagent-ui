@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Steps</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+    function confirmSubmit(event) {
+	var confirmAction = confirm("Are you sure you want to delete this step?");
+	if (!confirmAction) {
+	    event.preventDefault();  // Prevents the default action (form submission) if user cancels
+	}
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+	var buttons = document.querySelectorAll(".delete-button");
+	buttons.forEach(function(button) {
+	    button.addEventListener("click", confirmSubmit);
+	});
+    });
+    </script>
+  </head>
+  <body>
+    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
+      <h2>Steps</h2>
+      <div class="container">
+	<table class="info-table">
+	  <tr>
+	    <th>Pattern</th>
+	    <th>Toggle Function</th>
+	    <th>B2B Functions</th>
+	    <th>Action</th>
+	  </tr>
+	  <TMPL_LOOP name="steps">
+	    <tr>
+	      <td><TMPL_VAR name="ai_step_pattern"/></td>
+	      <td><TMPL_VAR name="toggle_function"/></td>
+	      <td>
+		<TMPL_IF name="ai_step_b2b_functions">
+		  Yes
+		  <TMPL_ELSE>
+		  No
+		</TMPL_IF>
+	      </td>
+	      <td>
+		<form action="/step" method="POST" accept-charset="utf-8" class="inline-form">
+		  <input type="hidden" name="action" value="delete">
+		  <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+		  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		  <input type="submit" class="delete-button" id="delete-button" value="Delete">
+		</form>
+		<form action="/step" accept-charset="utf-8" method="POST" class="inline-form">
+		  <input type="hidden" name="action" value="edit">
+		  <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+		  <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+		  <input type="submit" class="add-button" id="submit-button" value="Edit">
+		</form>
+	      </td>
+	    </tr>
+	    <tr>
+	      <td colspan="4">
+		<TMPL_VAR name="ai_step_response">
+	      </td>
+	    </tr>
+	  </TMPL_LOOP>
+	  <tr>
+	    <td colspan="4" class="button">
+	      <br/><br/>
+	      <form action="/step" method="POST" accept-charset="utf-8">
+		<input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
+		<input type="hidden" name="action" value="add">
+		<input type="submit" value="Add Step" class="add-button">
+	      </form>
+	    </td>
+	  </tr>
+	</table>
+      </div>
+      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
+  </body>
+</html>

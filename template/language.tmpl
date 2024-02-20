@@ -1,48 +1,58 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Hints</title>
+    <title>Languages</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
     <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
       function confirmSubmit(event) {
-      var confirmAction = confirm("Are you sure you want to delete this hint?");
-      if (!confirmAction) {
-      event.preventDefault();  // Prevents the default action (form submission) if user cancels
+      var confirmAction = confirm("Are you sure you want to delete this language?");
+	if (!confirmAction) {
+	    event.preventDefault();  // Prevents the default action (form submission) if user cancels
+	}
       }
-      }
-      
+
       document.addEventListener("DOMContentLoaded", function() {
-      var buttons = document.querySelectorAll(".delete-button");
-      buttons.forEach(function(button) {
-      button.addEventListener("click", confirmSubmit);
-      });
+	var buttons = document.querySelectorAll(".delete-button");
+	buttons.forEach(function(button) {
+	    button.addEventListener("click", confirmSubmit);
+	});
       });
       function closeWindow() {
-      window.close(); // Close the current browser window/tab
+	window.close(); // Close the current browser window/tab
       }
     </script>
   </head>
   <body>
-    <h2>Hints for <TMPL_VAR name="agent_name"/></h2>
+    <h2>Languages for <TMPL_VAR name="agent_name"/></h2>
     <div class="container">
       <table class="info-table">
 	<tr>
-	  <th>Hint</th>
+	  <th>Code</th>
+	  <th>Name</th>
+	  <th>Voice</th>
+	  <th>Engine</th>
+	  <th>Fillers</th>
+	  <th>Order</th>
 	  <th>Action</th>
 	</tr>
-	<TMPL_LOOP name="hints">
-	<tr>
-	  <td><TMPL_VAR name="hint"/></td>
+	<TMPL_LOOP name="languages">
+        <tr>
+	  <td><TMPL_VAR name="code"/></td>
+	  <td><TMPL_VAR name="name"/></td>
+	  <td><TMPL_VAR name="voice"/></td>
+	  <td><TMPL_VAR name="engine"/></td>
+	  <td><TMPL_VAR name="fillers"/></td>
+	  <td><TMPL_VAR name="language_order"/></td>
 	  <td>
-	    <form action="/hints" method="POST" accept-charset="utf-8" class="inline-form">
+	    <form action="/language" method="POST" accept-charset="utf-8" class="inline-form">
 	      <input type="hidden" name="action" value="delete">
 	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
 	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
 	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
 	      <input type="submit" class="delete-button" id="delete-button" value="Delete">
 	    </form>
-	    <form action="/hints" accept-charset="utf-8" method="POST" class="inline-form">
+	    <form action="/language" accept-charset="utf-8" method="POST" class="inline-form">
 	      <input type="hidden" name="action" value="edit">
 	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
 	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
@@ -53,16 +63,16 @@
 	</tr>
 	</TMPL_LOOP>
 	<tr>
-	  <td colspan="2" class="button">
+	  <td colspan="7" class="button">
 	    <br/><br/>
-	    <form action="/hints" method="POST" accept-charset="utf-8" class="inline-form">
+	    <form action="/language" method="POST" accept-charset="utf-8" class="inline-form">
 	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
 	      <input type="hidden" name="agent_name" value="<TMPL_VAR name="agent_name"/>">
 	      <input type="hidden" name="action" value="add">
-	      <input type="submit" value="Add Hint" class="add-button"> <button class="add-button" class="close-button" onclick="closeWindow()">Close</button>
+	      <input type="submit" value="Add Language" class="add-button"> <button class="add-button" class="close-button" onclick="closeWindow()">Close</button>
 	    </form>
 	    <br/><br/>
-      	  </td>
+	  </td>
 	</tr>
       </table>
     </div>

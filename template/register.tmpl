@@ -5,20 +5,21 @@
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
   </head>
-  <body>
-    <TMPL_INCLUDE NAME="/app/template/header.tmpl">
+  <body class="login-body">
+    <TMPL_INCLUDE NAME="/app/template/login_header.tmpl">
       <h2>Register</h2>
-      <div class="container">
-	<table>
-	  <div style="text-align: center;">
-	    <table>
-	      <tr>
-		<td><TMPL_VAR name="error"/></td>
-	      </tr>
-	    </table>
-	  </div>
-	</table>
-      </div>
-      <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
+      <div class="login-container">
+	<div class="container">
+	  <table>
+	    <div style="text-align: center;">
+	      <table>
+		<tr style="text-align: center;">
+		  <td><TMPL_VAR name="error"/></td>
+		</tr>
+	      </table>
+	    </div>
+	  </table>
+	</div>
+	<TMPL_INCLUDE NAME="/app/template/login_footer.tmpl">
   </body>
 </html>

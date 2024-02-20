@@ -21,7 +21,7 @@
 	      <label for="username">Username:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input id="username" autocomplete="username" name="username" value="<TMPL_VAR name="username"/>" required>
+	      <input id="username" autocomplete="username" name="username" value="<TMPL_VAR name="username"/>" readonly>
 	      <input type="hidden" name="action" value="update">
 	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
 	    </td>
@@ -69,7 +69,7 @@
 	  <tr>
 	    <td style="text-align: right">
 	      <label for="is_admin">Admin:</label>
-	    <td>
+	    </td>
 	    <td style="text-align: left">
 	      <input type="checkbox" id="is_admin" name="is_admin" <TMPL_VAR name="is_admin_checked">>
 	    </td>
@@ -77,17 +77,9 @@
 	  <tr>
 	    <td style="text-align: right">
 	      <label for="is_viwer">Viewer:</label>
-	    <td>
+	    </td>
 	    <td style="text-align: left">
 	      <input type="checkbox" id="is_viewer" name="is_viewer" <TMPL_VAR name="is_viewer_checked">>
-	    </td>
-	  </tr>
-	  <tr>
-	    <td style="text-align: right">
-	      <label for="totp_enable">TOTP:</label>
-	    <td>
-	    <td style="text-align: left">
-	      <input type="checkbox" id="totp_enabled" name="totp_enabled" <TMPL_VAR name="totp_enabled_checked">>
 	    </td>
 	  </tr>
 	  <tr>

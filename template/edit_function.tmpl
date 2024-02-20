@@ -33,7 +33,7 @@
       </nav>
     </header>
     <h2>Edit Function</h2>
-    <form id="functionForm" action="/functions" method="POST" accept-charset="utf-8">
+    <form id="functionForm" action="/function" method="POST" accept-charset="utf-8">
       <div class="container">
 	<table>
 	  <tr>
@@ -73,7 +73,7 @@
 	  </tr>
 	  <tr>
 	    <td colspan="2">
-	      <div id="editor" style="height: 900px; width: 1500px;"><TMPL_VAR name="code"/></div>
+	      <div id="editor" style="height: 900px; width: 1000px;"><TMPL_VAR name="code"/></div>
 	      <script nonce="<TMPL_VAR name="nonce"/>">
 		var editor = ace.edit("editor");
 		editor.setTheme("ace/theme/monokai");

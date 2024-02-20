@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Feature Toggle</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
+    <script nonce="<TMPL_VAR name="nonce"/>">
+      function goBack() {
+          window.history.back();
+      }
+    </script>
+  </head>
+  <body>
+    <h2>Edit Feature Toggle for <TMPL_VAR name="feature_name"/></h2>
+     <div class="container">
+       <form action="/featuretoggles" method="POST" accept-charset="utf-8">
+	 <table>
+	   <tr>
+	     <td style="text-align: right">
+	       <label for="toggle">Toggle:</label>
+	     </td>
+	     <td style="text-align: left">
+	       <input id="toggle" name="toggle" value="<TMPL_VAR name="toggle"/>" required>
+	       <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
+	       <input type="hidden" name="feature_name" value="<TMPL_VAR name="feature_name"/>">
+	       <input type="hidden" name="feature_id" value="<TMPL_VAR name="feature_id"/>">
+	       <input type="hidden" name="action" value="update">
+	     </td>
+	   </tr>
+	   <tr>
+	     <td style="text-align: right">
+	       <label for="description">Description:</label>
+	     </td>
+	     <td style="text-align: left">
+	       <input id="description" style="width: 400px;" name="description" value="<TMPL_VAR name="description"/>" required>
+	     </td>
+	   </tr>
+	   <tr>
+	     <td style="text-align: right">
+	       <label for="toggle_order">Order:</label>
+	     </td>
+	     <td style="text-align: left">
+	       <input id="toggle_order" style="width: 400px;" name="toggle_order" value="<TMPL_VAR name="toggle_order"/>" required>
+	     </td>
+	   </tr>
+	   <tr>
+	     <td colspan="2" class="button">
+	       <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Update"  class="submit-button">
+	       <br/><br/>
+	     </td>
+	   </tr>
+	 </table>
+       </form>
+     </div>
+  </body>
+</html>
+

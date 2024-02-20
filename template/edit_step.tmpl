@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Contexts</title>
+    <title>Step</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
     <script src="/assets/ace.js" type="text/javascript" charset="utf-8" nonce="<TMPL_VAR name="nonce"/>"></script>
@@ -13,9 +13,9 @@
   </head>
   <body>
     <TMPL_INCLUDE NAME="/app/template/header.tmpl">
-    <h2>Create Context</h2>
+    <h2>Edit Step</h2>
     <div class="container">
-      <form action="/context" method="POST" accept-charset="utf-8">
+      <form id="markdownForm" action="/step" method="POST" accept-charset="utf-8">
 	<table>
 	  <tr>
 	    <th colspan="2">
@@ -24,21 +24,21 @@
 	  </tr>
 	  <tr>
 	    <td style="text-align: right">
-	      <label for="name">Name:</label>
+	      <label for="ai_step_pattern">Pattern:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input name="name" id="name" required><br/>
+	      <input id="ai_step_pattern" name="ai_step_pattern" value="<TMPL_VAR name="ai_step_pattern"/>" required>
 	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
 	      <input type="hidden" name="id" value="<TMPL_VAR name="id"/>">
-	      <input type="hidden" name="action" value="create">
+	      <input type="hidden" name="action" value="update">
 	    </td>
 	  </tr>
 	  <tr>
 	    <td style="text-align: right">
-	      <label for="pattern">Pattern:</label>
+	      <label for="ai_step_b2b_functions">B2B Function:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input id="pattern" name="pattern" required>
+	      <input type="checkbox" id="ai_step_b2b_functions" name="ai_step_b2b_functions" <TMPL_VAR name="ai_step_b2b_functions_checked"/>>
 	    </td>
 	  </tr>
 	  <tr>
@@ -46,22 +46,22 @@
 	      <label for="toggle_function">Toggle Function:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input id="toggle_function" name="toggle_function">
+	      <input id="toggle_function" name="toggle_function" value="<TMPL_VAR name="toggle_function"/>">
 	    </td>
 	  </tr>
 	  <tr>
 	    <td style="text-align: right">
-	      <label for="consolidate">Consolidate:</label>
+	      <label for="custom_action">Custom Action:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input type="checkbox" id="consolidate" name="consolidate">
+	      <input id="custom_action" name="custom_action" value="<TMPL_VAR name="custom_action"/>">
 	    </td>
 	  </tr>
 	  <tr>
 	    <td colspan="2">
-	      <h3>User Prompt</h3>
-	      <label for="editorContent" style="display:none;">User Prompt</label>
-	      <div id="editor" style="height: 300px; width: 1500px;"></div>
+	      <h3>Step Response</h3>
+	      <label for="editorContent" style="display:none;">Step Response</label>
+	      <div id="editor" style="height: 300px; width: 1500px;"><TMPL_VAR name="ai_step_response"/></div>
 	      <script nonce="<TMPL_VAR name="nonce"/>">
 		var editor = ace.edit("editor");
 		editor.setTheme("ace/theme/monokai");
@@ -71,39 +71,19 @@
 		document.getElementById('editorContent').value = editor.getValue();
 		});
 	      </script>
-	      <input type="hidden" name="user_prompt" id="editorContent">
+	      <input type="hidden" name="ai_step_response" id="editorContent">
 	    </td>
 	  </tr>
 	  <tr>
-	    <td colspan="2">
-	      <h3>System Prompt</h3>
-	      
-	      <label for="syseditorContent" style="display:none;">System Prompt</label>
-	      <div id="syseditor" style="height: 300px; width: 1500px;"></div>
-	      <script nonce="<TMPL_VAR name="nonce"/>">
-		var syseditor = ace.edit("syseditor");
-		syseditor.setTheme("ace/theme/monokai");
-		syseditor.session.setMode("ace/mode/markdown");
-		syseditor.setOption("showPrintMargin", false);
-		document.getElementById('markdownForm').addEventListener('submit', function() {
-		document.getElementById('syseditorContent').value = syseditor.getValue();
-		});
-	      </script>
-	      <input type="hidden" name="system_prompt" id="syseditorContent">
-	      
-	    </td>
-	  </tr>
-	  <tr>
-            <td colspan="2" class="button">
+	    <td colspan="2" class="button">
 	      <br/><br/>
-	      <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Create" class="submit-button">
+	       <button id="back-button" onclick="goBack()">Go Back</button>&nbsp;&nbsp;<input type="submit" value="Update"  class="submit-button">
 	      <br/><br/>
 	    </td>
 	  </tr>
 	</table>
       </form>
     </div>
-    <TMPL_INCLUDE NAME="/app/template/footer.tmpl">
   </body>
 </html>
 
