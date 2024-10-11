@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Conversation Details</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
@@ -77,6 +77,9 @@
 	  <TMPL_IF expr="role eq 'system'">
             <tr class="system">
 	  </TMPL_IF>
+	  <TMPL_IF expr="role eq 'system-log'">
+            <tr class="system-log">
+	  </TMPL_IF>
 	  <TMPL_IF expr="role eq 'assistant'">
 	  <tr class="assistant">
 	  </TMPL_IF>
@@ -87,7 +90,7 @@
 	    <tr class="function">
 	  </TMPL_IF>
 	  <td><TMPL_VAR name="role"/></td>
-	  <td><TMPL_VAR name="content"/></td>
+	  <td><TMPL_VAR name="content"/><br/><TMPL_IF name="latency">Latency: <TMPL_VAR name="latency"/>ms</TMPL_IF> <TMPL_IF name="utterance_latency">Utterance Latency: <TMPL_VAR name="utterance_latency"/>ms</TMPL_IF> <TMPL_IF name="audio_latency">Audio Latency: <TMPL_VAR name="audio_latency">ms</TMPL_IF></td>
           </tr>
           </TMPL_LOOP>
           <tr>

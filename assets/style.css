@@ -31,6 +31,16 @@ footer {
     padding: 10px 0;
 }
 
+.totp-error {
+    color: red;
+    text-align: center;
+}
+
+.totp-success {
+    color: green;
+    text-align: center;
+}
+
 .login-error {
     color: red;
 }
@@ -49,7 +59,7 @@ footer {
     align-items: center;
 }
 
-td .login-label {
+td.login-label {
     padding: 20px;
     border-radius: 5px;
     margin-top: 20px;
@@ -57,10 +67,10 @@ td .login-label {
     text-align: right;
     text-color: #ffffff;
     background-color: #222222;
-    
+    white-space: nowrap;
 }
 
-td login-input {
+td.login-input {
     padding: 20px;
     border-radius: 5px;
     margin-top: 20px;
@@ -216,6 +226,10 @@ header nav a {
     margin: 0 10px;
     text-decoration: none;
     color: #333;
+}
+
+.system-log {
+    background-color: #800080;
 }
 
 .system {

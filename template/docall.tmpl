@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>Do Call</title>
+    <link rel="stylesheet" href="/assets/style.css" type="text/css">
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+     <script type="text/javascript" nonce="<TMPL_VAR name="nonce"/>">
+       function closeWindow() {
+       window.close(); // Close the current browser window/tab
+       }
+     </script>
+  </head>
+  <body>
+    <h2>Do Call</h2>
+    <div class="container">
+      <table style="text-align: center">
+	<form action="/call" method="POST" accept-charset="utf-8">
+	  <tr>
+	    <td class="docall-label">
+	      <label for="phone_number">Number to call:</label>
+	    </td>
+	    <td class="docal-input">
+	      <input id="to" autocomplete="to" name="to" required>
+	      <input type="hidden" name="from" value="<TMPL_VAR NAME="from">">
+	      <input type="hidden" name="agent_id" value="<TMPL_VAR NAME="agent_id">">
+	      <input type="submit" value="Place Call" class="add-button"> 
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2" class="button">
+	      <br/><br/>
+	      <button class="add-button" class="close-button" onclick="closeWindow()">Close</button>
+	      <br/><br/>
+      	    </td>
+	  </tr>
+      </table>
+      </form>
+    </div>
+  </body>
+</html>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>SignalWire AI Agents</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
@@ -13,6 +13,17 @@
 	var top = (screen.height - height) / 4;
 
 	var url = "/" + action + "?agent_id=" + agentId + "&agent_name=" + agent;
+
+	var popupWindow = window.open(url, "Popup Window", 'width=' + width + ',height=' + height + ',top=' + top + ',left=' + left);
+    }
+    function doCall(agent, action, agentId, from) {
+	event.preventDefault();
+	var width = 1200;
+	var height = 600;
+	var left = (screen.width - width) / 2;
+	var top = (screen.height - height) / 4;
+
+	var url = "/" + action + "?agent_id=" + agentId + "&agent_name=" + agent + "&from=" + encodeURIComponent(from);
 
 	var popupWindow = window.open(url, "Popup Window", 'width=' + width + ',height=' + height + ',top=' + top + ',left=' + left);
     }
@@ -48,6 +59,7 @@
 	      <td><TMPL_VAR name="description"/></td>
 	      <td class="phone-number"><TMPL_VAR name="phone_number"/></td>
 	      <td class="action">
+		<button id="docall"    onclick="doCall(    '<TMPL_VAR ESCAPE=JS name="name"/>', 'docall',    <TMPL_VAR name="id"/>, '<TMPL_VAR name="phone_number"/>')" class="submit-button">Do Call</button>&nbsp;&nbsp;
 		<button id="hints"     onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="name"/>', 'hints',     <TMPL_VAR name="id"/>)" class="submit-button">Hints</button>&nbsp;&nbsp;
 		<button id="language"  onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="name"/>', 'language',  <TMPL_VAR name="id"/>)" class="submit-button">Language</button>&nbsp;&nbsp;
 		<button id="pronounce" onclick="openPopup( '<TMPL_VAR ESCAPE=JS name="name"/>', 'pronounce', <TMPL_VAR name="id"/>)" class="submit-button">Pronounce</button>&nbsp;&nbsp;

@@ -7,6 +7,8 @@ use warnings;
 # Database tie hash
 use MyTieConfig;
 
+use Encode qw(encode);
+
 # PSGI/Plack
 use Plack::Builder;
 use Plack::Runner;
@@ -28,6 +30,8 @@ use HTML::Template::Expr;
 use Authen::TOTP;
 use LWP::UserAgent;
 use Crypt::Bcrypt qw( bcrypt bcrypt_check );
+use GD::Image;
+use GD::Barcode::QRcode;
 use LWP::UserAgent;
 use JSON::PP;
 use MIME::Base64;
@@ -44,7 +48,7 @@ use Env::C;
 use DBI;
 
 # AI Params
-my @ai_params  = qw( CONSCIENCE END_OF_SPEECH_TIMEOUT ATTENTION_TIMEOUT BACKGROUND_FILE BACKGROUND_FILE_LOOPS BACKGROUND_FILE_VOLUME ELEVEN_LABS_MODEL OPENAI_ASR_ENGINE LOCAL_TZ SAVE_CONVERSATION ACKNOWLEDGE_INTERRUPTIONS DEBUG_WEBHOOK_LEVEL VERBOSE_LOGS AI_MODEL HOLD_MUSIC CACHE_MODE INTERRUPT_PROMPT INTERRUPT_ON_NOISE INPUT_POLL_FREQ AI_VOLUME BARGE_MATCH_STRING BARGE_MIN_WORDS SWAIG_ALLOW_SWML SWAIG_POST_SWML_VARS SWAIG_ALLOW_SETTINGS  SWAIG_POST_CONVERSATION TRANSFER_SUMMARY DEVELOPER_PROMPT DIGIT_TIMEOUT DIGIT_TERMINATORS ENERGY_LEVEL SPEECH_TIMEOUT ATTENTION_TIMEOUT INACTIVITY_TIMEOUT OUTBOUND_ATTENTION_TIMEOUT LANGUAGES_ENABLED ELEVEN_LABS_KEY ELEVEN_LABS_STABILITY ELEVEN_LABS_SIMILARITY );
+my @ai_params  = qw( DIRECTION CONSCIENCE END_OF_SPEECH_TIMEOUT ATTENTION_TIMEOUT BACKGROUND_FILE BACKGROUND_FILE_LOOPS BACKGROUND_FILE_VOLUME ELEVEN_LABS_MODEL OPENAI_ASR_ENGINE LOCAL_TZ SAVE_CONVERSATION ACKNOWLEDGE_INTERRUPTIONS DEBUG_WEBHOOK_LEVEL VERBOSE_LOGS AI_MODEL HOLD_MUSIC CACHE_MODE INTERRUPT_PROMPT INTERRUPT_ON_NOISE INPUT_POLL_FREQ AI_VOLUME BARGE_MATCH_STRING BARGE_MIN_WORDS SWAIG_ALLOW_SWML SWAIG_POST_SWML_VARS SWAIG_ALLOW_SETTINGS  SWAIG_POST_CONVERSATION TRANSFER_SUMMARY DEVELOPER_PROMPT DIGIT_TIMEOUT DIGIT_TERMINATORS ENERGY_LEVEL SPEECH_TIMEOUT ATTENTION_TIMEOUT INACTIVITY_TIMEOUT OUTBOUND_ATTENTION_TIMEOUT LANGUAGES_ENABLED ELEVEN_LABS_KEY ELEVEN_LABS_STABILITY ELEVEN_LABS_SIMILARITY FUNCTION_ON_SPEAKER_TIMEOUT BACK_TO_BACK_FUNCTIONS TRANSPARENT_BARGE CONVERSATION_SLIDING_WINDOW AUDIBLE_DEBUG ENABLE_ACCOUNTING SUMMARY_MODE );
 
 my $data_sql = {
     ai_agent => {
@@ -52,9 +56,6 @@ my $data_sql = {
     },
     ai_config => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_config ( id SERIAL PRIMARY KEY, name VARCHAR(255) NOT NULL, value TEXT NOT NULL, agent_id INTEGER NOT NULL, CONSTRAINT fk_agent FOREIGN KEY (agent_id) REFERENCES ai_agent (id) ON DELETE CASCADE ) )
-    },
-    ai_context => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_context ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, name TEXT, pattern TEXT, toggle_function TEXT, consolidate BOOLEAN DEFAULT FALSE, full_reset BOOLEAN DEFAULT FALSE, user_prompt TEXT, system_prompt TEXT ) )
     },
     ai_function => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_function ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, name TEXT, purpose TEXT, code TEXT, active BOOLEAN DEFAULT TRUE ) )
@@ -75,7 +76,7 @@ my $data_sql = {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_post_prompt ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, data JSONB, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
     },
     ai_prompt => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_prompt ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prompt TEXT, post_prompt TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, UNIQUE(agent_id) ) )
+	create => qq( CREATE TABLE IF NOT EXISTS ai_prompt ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, prompt TEXT, post_prompt TEXT, outbound_prompt TEXT, outbound_post_prompt TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, UNIQUE(agent_id) ) )
     },
     ai_pronounce => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_pronounce ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, ignore_case BOOLEAN DEFAULT FALSE, replace_this TEXT, replace_with TEXT, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
@@ -87,10 +88,10 @@ my $data_sql = {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_features ( id SERIAL PRIMARY KEY, created TIMESTAMP NOT NULL, description TEXT, code TEXT ) )
     },
     ai_feature_toggles => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_feature_toggles ( id SERIAL PRIMARY KEY, toggle TEXT NOT NULL UNIQUE, description TEXT, toggle_order INT NOT NULL DEFAULT 0, feature_id INTEGER REFERENCES ai_features(id) ON DELETE CASCADE ) ) 
-    },	
+	create => qq( CREATE TABLE IF NOT EXISTS ai_feature_toggles ( id SERIAL PRIMARY KEY, toggle TEXT NOT NULL UNIQUE, description TEXT, toggle_order INT NOT NULL DEFAULT 0, feature_id INTEGER REFERENCES ai_features(id) ON DELETE CASCADE ) )
+    },
     ai_feature_strings => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_feature_strings ( id SERIAL PRIMARY KEY, string TEXT NOT NULL UNIQUE, description TEXT, string_order INT NOT NULL DEFAULT 0, required BOOLEAN NOT NULL, feature_id INTEGER REFERENCES ai_features(id) ON DELETE CASCADE ) ) 
+	create => qq( CREATE TABLE IF NOT EXISTS ai_feature_strings ( id SERIAL PRIMARY KEY, string TEXT NOT NULL UNIQUE, description TEXT, string_order INT NOT NULL DEFAULT 0, required BOOLEAN NOT NULL, feature_id INTEGER REFERENCES ai_features(id) ON DELETE CASCADE ) )
     },
     ai_users => {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_users ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, username VARCHAR(255) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, first_name VARCHAR(255), last_name VARCHAR(255), email VARCHAR(255) UNIQUE, phone_number VARCHAR(20), totp_secret VARCHAR(255), totp_enabled BOOLEAN DEFAULT false, is_admin BOOLEAN DEFAULT false, is_viewer BOOLEAN DEFAULT false ) )
@@ -102,7 +103,8 @@ my $data_sql = {
 	create => qq( CREATE TABLE IF NOT EXISTS ai_password_reset ( id SERIAL PRIMARY KEY, created TIMESTAMP DEFAULT CURRENT_TIMESTAMP, user_id INTEGER REFERENCES ai_users(id) ON DELETE CASCADE, token VARCHAR(255) NOT NULL ) )
     },
     ai_steps => {
-	create => qq( CREATE TABLE IF NOT EXISTS ai_steps ( id SERIAL PRIMARY KEY, ai_step_pattern TEXT NOT NULL, toggle_function TEXT, custom_action TEXT, ai_step_response TEXT NOT NULL, ai_step_b2b_functions BOOLEAN NOT NULL, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE ) )
+	create => qq( CREATE TABLE IF NOT EXISTS ai_steps ( id SERIAL PRIMARY KEY, agent_id INTEGER REFERENCES ai_agent(id) ON DELETE CASCADE, context TEXT DEFAULT 'default', step_name TEXT, functions TEXT, step_criteria TEXT, valid_steps TEXT, "end" BOOLEAN, text TEXT, skip_user_turn BOOLEAN, valid_contexts TEXT, full_reset BOOLEAN, consolidate BOOLEAN, system_prompt TEXT, user_prompt TEXT, step_order INTEGER) )
+
     },
     default_admin_user => {
 	create => qq( INSERT INTO ai_users (username, password, first_name, last_name, email, phone_number, totp_enabled, is_admin, is_viewer) VALUES ('admin', '\$2b\$12\$bCbkTUnxSiHDPCfDWUWzP.1qPZKVPWI59Tnzry0AcuKX7e5tmF6pu', 'Admin', 'User', 'admin\@example.com', '+10000000000', false, true, false) ON CONFLICT (username) DO NOTHING )
@@ -110,55 +112,51 @@ my $data_sql = {
 };
 
 my %role_names = (
-    admin_view          => "Admin View",
-    admin_delete        => "Admin Delete",
-    admin_create        => "Admin Create",
-    admin_update        => "Admin Update",
-    user_view           => "User View",
-    user_delete         => "User Delete",
-    user_create         => "User Create",
-    user_update         => "User Update",
-    view_agent          => "View Agent",
-    view_config         => "View Config",
-    update_config       => "Update Config",
-    view_prompt         => "View Prompt",
-    update_prompt       => "Update Prompt",
-    view_agents         => "View Agents",
-    delete_agents       => "Delete Agents",
-    create_agents       => "Create Agents",
-    update_agents       => "Update Agents",
-    view_hints          => "View Hints",
-    delete_hints        => "Delete Hints",
-    create_hints        => "Create Hints",
-    update_hints        => "Update Hints",
-    view_languages      => "View Languages",
-    delete_languages    => "Delete Languages",
-    create_languages    => "Create Languages",
-    update_languages    => "Update Languages",
-    view_step           => "View Step",
-    delete_step         => "Delete Step",
-    create_step         => "Create Step",
-    update_step         => "Update Step",
-    view_pronounce      => "View Pronounce",
-    delete_pronounce    => "Delete Pronounce",
-    create_pronounce    => "Create Pronounce",
-    update_pronounce    => "Update Pronounce",
-    view_functions      => "View Functions",
-    delete_functions    => "Delete Functions",
-    create_functions    => "Create Functions",
-    update_functions    => "Update Functions",
-    view_functionargs   => "View FunctionArgs",
+    admin_view		=> "Admin View",
+    admin_delete	=> "Admin Delete",
+    admin_create	=> "Admin Create",
+    admin_update	=> "Admin Update",
+    user_view		=> "User View",
+    user_delete		=> "User Delete",
+    user_create		=> "User Create",
+    user_update		=> "User Update",
+    view_agent		=> "View Agent",
+    view_config		=> "View Config",
+    update_config	=> "Update Config",
+    view_prompt		=> "View Prompt",
+    update_prompt	=> "Update Prompt",
+    view_agents		=> "View Agents",
+    delete_agents	=> "Delete Agents",
+    create_agents	=> "Create Agents",
+    update_agents	=> "Update Agents",
+    view_hints		=> "View Hints",
+    delete_hints	=> "Delete Hints",
+    create_hints	=> "Create Hints",
+    update_hints	=> "Update Hints",
+    view_languages	=> "View Languages",
+    delete_languages	=> "Delete Languages",
+    create_languages	=> "Create Languages",
+    update_languages	=> "Update Languages",
+    view_step		=> "View Step",
+    delete_step		=> "Delete Step",
+    create_step		=> "Create Step",
+    update_step		=> "Update Step",
+    view_pronounce	=> "View Pronounce",
+    delete_pronounce	=> "Delete Pronounce",
+    create_pronounce	=> "Create Pronounce",
+    update_pronounce	=> "Update Pronounce",
+    view_functions	=> "View Functions",
+    delete_functions	=> "Delete Functions",
+    create_functions	=> "Create Functions",
+    update_functions	=> "Update Functions",
+    view_functionargs	=> "View FunctionArgs",
     delete_functionargs => "Delete FunctionArgs",
     create_functionargs => "Create FunctionArgs",
     update_functionargs => "Update FunctionArgs",
-    view_contexts       => "View Contexts",
-    delete_contexts     => "Delete Contexts",
-    create_contexts     => "Create Contexts",
-    update_contexts     => "Update Contexts",
-    view_features       => "View Features",
-    delete_features     => "Delete Features",
-    create_features     => "Create Features",
-    update_features     => "Update Features",
+    view_features	=> "View Features",
+    delete_features	=> "Delete Features",
+    create_features	=> "Create Features",
+    update_features	=> "Update Features",
     view_feature_toggles   => "View Feature Toggles",
     delete_feature_toggles => "Delete Feature Toggles",
     create_feature_toggles => "Create Feature Toggles",
@@ -167,15 +165,15 @@ my %role_names = (
     delete_feature_strings => "Delete Feature Strings",
     create_feature_strings => "Create Feature Strings",
     update_feature_strings => "Update Feature Strings",
-    view_users          => "View Users",
-    delete_users        => "Delete Users",
-    create_users        => "Create Users",
-    update_users        => "Update Users",
-    view_summary        => "View Summary",
-    delete_summary      => "Delete Summary",
-    view_messages       => "View Messages",
-    delete_messages     => "Delete Messages",
-    view_debug          => "View Debug"
+    view_users		=> "View Users",
+    delete_users	=> "Delete Users",
+    create_users	=> "Create Users",
+    update_users	=> "Update Users",
+    view_summary	=> "View Summary",
+    delete_summary	=> "Delete Summary",
+    view_messages	=> "View Messages",
+    delete_messages	=> "Delete Messages",
+    view_debug		=> "View Debug"
     );
 
 # Load environment variables
@@ -191,80 +189,81 @@ my %function = (
 # Dispatch table for PSGI
 my %dispatch = (
     'GET' => {
-	'/'             => \&agents,
-	'/agent'        => \&agent,
-	'/config'       => \&config,
-	'/prompt'       => \&prompt,
-	'/summary'      => \&summary,
-	'/messages'     => \&messages,
-	'/context'      => \&context,
-	'/step'         => \&step,
-	'/feature'      => \&feature,
-	'/featuretoggles' => \&featuretoggles,,
+	'/'		=> \&agents,
+	'/agent'	=> \&agent,
+	'/config'	=> \&config,
+	'/prompt'	=> \&prompt,
+	'/summary'	=> \&summary,
+	'/messages'	=> \&messages,
+	'/step'		=> \&step,
+	'/feature'	=> \&feature,
+	'/featuretoggles' => \&featuretoggles,
 	'/featurestrings' => \&featurestrings,
-	'/function'     => \&function,
+	'/function'	=> \&function,
 	'/functionargs' => \&functionargs,
-	'/language'     => \&language,
-	'/pronounce'    => \&pronounce,
-	'/hints'        => \&hints,
-	'/users'        => \&users,
-	'/debug'        => \&debug,
-	'/totp'         => \&totp,
-	'/roles'        => \&roles,
+	'/language'	=> \&language,
+	'/pronounce'	=> \&pronounce,
+	'/hints'	=> \&hints,
+	'/docall'	=> \&docall,
+	'/call'		=> \&call,
+	'/users'	=> \&users,
+	'/debug'	=> \&debug,
+	'/totp'		=> \&totp,
+	'/roles'	=> \&roles,
     },
     'POST' => {
-	'/'             => \&agents,
-	'/agent'        => \&agent,
-	'/config'       => \&config,
-	'/prompt'       => \&prompt,
-	'/summary'      => \&summary,
-	'/messages'     => \&messages,
-	'/context'      => \&context,
-	'/step'         => \&step,
-	'/featuretoggles' => \&featuretoggles,,
+	'/'		=> \&agents,
+	'/agent'	=> \&agent,
+	'/config'	=> \&config,
+	'/prompt'	=> \&prompt,
+	'/summary'	=> \&summary,
+	'/messages'	=> \&messages,
+	'/step'		=> \&step,
+	'/featuretoggles' => \&featuretoggles,
 	'/featurestrings' => \&featurestrings,
-	'/feature'      => \&feature,
-	'/function'     => \&function,
+	'/feature'	=> \&feature,
+	'/function'	=> \&function,
 	'/functionargs' => \&functionargs,
-	'/language'     => \&language,
-	'/pronounce'    => \&pronounce,
-	'/hints'        => \&hints,
-	'/users'        => \&users,
-	'/post'         => \&post,
-	'/totp'         => \&totp,
-	'/roles'        => \&roles,
+	'/language'	=> \&language,
+	'/pronounce'	=> \&pronounce,
+	'/hints'	=> \&hints,
+	'/docall'	=> \&docall,
+	'/call'		=> \&call,
+	'/users'	=> \&users,
+	'/post'		=> \&post,
+	'/totp'		=> \&totp,
+	'/roles'	=> \&roles,
     }
     );
 
 # Admin Navigation bar
 my @nav = [
-    { path => '/',          name => 'Home',          table => "ai_agent"        },
-    { path => '/agent',     name => 'Conversations', table => "ai_conversation" },
-    { path => '/config',    name => 'Configuration', table => "ai_config"       },
-    { path => '/prompt',    name => 'Prompt',        table => "ai_prompt"       },
-    { path => '/summary',   name => 'Summary',       table => "ai_summary"      },
-    { path => '/context',   name => 'Contexts',      table => "ai_context"      },
-    { path => '/step',      name => 'Steps',         table => "ai_step"         },
-    { path => '/function',  name => 'Functions',     table => "ai_function"     },
-    { path => '/messages',  name => 'Messages',      table => "ai_message"      },
-    { path => '/debug',     name => 'Debug',         table => undef             },
-    { path => '/logout',    name => 'Logout',        table => undef		}
+    { path => '/',	    name => 'Home',	     table => "ai_agent"	},
+    { path => '/agent',	    name => 'Conversations', table => "ai_conversation" },
+    { path => '/config',    name => 'Configuration', table => "ai_config"	},
+    { path => '/prompt',    name => 'Prompt',	     table => "ai_prompt"	},
+    { path => '/summary',   name => 'Summary',	     table => "ai_summary"	},
+    { path => '/step',	    name => 'Steps',	     table => "ai_step"		},
+    { path => '/function',  name => 'Functions',     table => "ai_function"	},
+    { path => '/messages',  name => 'Messages',	     table => "ai_message"	},
+    { path => '/debug',	    name => 'Debug',	     table => undef		},
+    { path => '/logout',    name => 'Logout',	     table => undef		}
     ];
 
 # Main Navigation bar
 my @user_nav = [
-    { path => '/',         name => 'Agents'        },
-    { path => '/logout',   name => 'Logout'        }
+    { path => '/',	   name => 'Agents'	   },
+    { path => '/logout',   name => 'Logout'	   }
     ];
 
 my @admin_nav = [
-    { path => '/',         name => 'Agents'        },
-    { path => '/feature',  name => 'Features'      },
-    { path => '/users',    name => 'Users'         },
-    { path => '/logout',   name => 'Logout'        }
+    { path => '/',	   name => 'Agents'	   },
+    { path => '/feature',  name => 'Features'	   },
+    { path => '/users',	   name => 'Users'	   },
+    { path => '/logout',   name => 'Logout'	   }
     ];
 
-my %clients;       # Store connected clients
+my %clients;	   # Store connected clients
 my %subscriptions; # Store subscriptions by agent_id
 
 # Broadcast to a specific client by uuid
@@ -292,7 +291,7 @@ sub broadcast_by_agent_id {
 
 # Generate Nonce for CSP Header
 sub generate_nonce {
-    my $length       = shift // 16;
+    my $length	     = shift // 16;
     my $random_bytes = Crypt::URandom::urandom( $length );
 
     return encode_base64( $random_bytes, '' );
@@ -304,8 +303,8 @@ sub e164_to_spoken {
     $number =~ s/^\+1//g;
 
     my %digit_to_word = (
-	'0' => 'zero',  '1' => 'one',  '2' => 'two', '3' => 'three',
-	'4' => 'four',  '5' => 'five', '6' => 'six', '7' => 'seven',
+	'0' => 'zero',	'1' => 'one',  '2' => 'two', '3' => 'three',
+	'4' => 'four',	'5' => 'five', '6' => 'six', '7' => 'seven',
 	'8' => 'eight', '9' => 'nine', '+' => 'plus'
     );
 
@@ -318,13 +317,13 @@ sub e164_to_spoken {
 
 # Internal SWAIG function
 sub check_for_input {
-    my $env       = shift;
-    my $req       = Plack::Request->new( $env );
+    my $env	  = shift;
+    my $req	  = Plack::Request->new( $env );
     my $post_data = decode_json( $req->raw_body );
-    my $data      = $post_data->{argument}->{parsed}->[0];
-    my $agent     = $req->param( 'agent_id' );
-    my $swml      = SignalWire::ML->new;
-    my $json      = JSON::PP->new->ascii->pretty->allow_nonref;
+    my $data	  = $post_data->{argument}->{parsed}->[0];
+    my $agent	  = $req->param( 'agent_id' );
+    my $swml	  = SignalWire::ML->new;
+    my $json	  = JSON::PP->new->ascii->pretty->allow_nonref;
     my $convo_id  = $post_data->{conversation_id};
     my @message;
 
@@ -382,14 +381,14 @@ sub generate_random_string {
 
 # PSGI application code
 my $reset_app = sub {
-    my $env     = shift;
-    my $error   = shift;
-    my $req     = Plack::Request->new( $env );
-    my $params  = $req->parameters;
+    my $env	= shift;
+    my $error	= shift;
+    my $req	= Plack::Request->new( $env );
+    my $params	= $req->parameters;
 
     my $res = Plack::Response->new( 200 );
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     my $template = HTML::Template::Expr->new( filename => "/app/template/reset.tmpl", die_on_bad_params => 0 );
 
@@ -401,7 +400,7 @@ my $reset_app = sub {
 
     if ( $req->method eq 'POST' ) {
 	if ($params->{action} eq 'doreset' && $params->{token} && ( $params->{password} eq $params->{password2} ) ) {
-	    my $sql = "SELECT au.*, pr.token AS password_reset_token, pr.created AS password_reset_created FROM ai_users au LEFT JOIN ai_password_reset pr ON au.id = pr.user_id WHERE au.username = ? AND pr.token = ?  AND pr.created > NOW() - INTERVAL '15 minutes'";
+	    my $sql = "SELECT au.*, pr.token AS password_reset_token, pr.created AS password_reset_created FROM ai_users au LEFT JOIN ai_password_reset pr ON au.id = pr.user_id WHERE au.username = ? AND pr.token = ?	 AND pr.created > NOW() - INTERVAL '15 minutes'";
 
 	    my $sth = $dbh->prepare( $sql );
 
@@ -433,15 +432,15 @@ my $reset_app = sub {
 		$dth->finish;
 
 		my $sw = SignalWire::RestAPI->new(
-		    AccountSid  => $ENV{ACCOUNT_SID},
-		    AuthToken   => $ENV{AUTH_TOKEN},
-		    Space       => $ENV{SPACE_NAME},
+		    AccountSid	=> $ENV{ACCOUNT_SID},
+		    AuthToken	=> $ENV{AUTH_TOKEN},
+		    Space	=> $ENV{SPACE_NAME},
 		    );
 
 		my $response = $sw->POST( 'Messages',
-					  From     => $ENV{FROM_NUMBER},
-					  To       => $row->{phone_number},
-					  Body     => "Your password was reset and TOTP disabled.  If you did not request this, please contact support immediately."
+					  From	   => $ENV{FROM_NUMBER},
+					  To	   => $row->{phone_number},
+					  Body	   => "Your password was reset and TOTP disabled.  If you did not request this, please contact support immediately."
 		    );
 
 		print STDERR Dumper( $response ) if ! $response->{is_success};
@@ -466,15 +465,15 @@ my $reset_app = sub {
 		my $token = generate_random_string( 32 );
 
 		my $sw = SignalWire::RestAPI->new(
-		    AccountSid  => $ENV{ACCOUNT_SID},
-		    AuthToken   => $ENV{AUTH_TOKEN},
-		    Space       => $ENV{SPACE_NAME},
+		    AccountSid	=> $ENV{ACCOUNT_SID},
+		    AuthToken	=> $ENV{AUTH_TOKEN},
+		    Space	=> $ENV{SPACE_NAME},
 		    );
 
 		my $response = $sw->POST( 'Messages',
-					  From     => $ENV{FROM_NUMBER},
-					  To       => $row->{phone_number},
-					  Body     => "Your password reset link is https://$env->{HTTP_HOST}/reset?token=$token"
+					  From	   => $ENV{FROM_NUMBER},
+					  To	   => $row->{phone_number},
+					  Body	   => "Your password reset link is https://$env->{HTTP_HOST}/reset?token=$token"
 		    );
 		print STDERR Dumper( $response ) if ! $response->{is_success};
 
@@ -522,8 +521,8 @@ my $reset_app = sub {
 
 sub check_role {
     my $session = shift;
-    my $role    = shift;
-    my $roles   = $session->{roles};
+    my $role	= shift;
+    my $roles	= $session->{roles};
 
     my @roles_to_check = split /,/, $role;
 
@@ -534,17 +533,17 @@ sub check_role {
 }
 
 sub roles {
-    my $env      = shift;
-    my $req      = Plack::Request->new( $env );
-    my $params   = $req->parameters;
-    my $user_id  = $params->{user_id};
+    my $env	 = shift;
+    my $req	 = Plack::Request->new( $env );
+    my $params	 = $req->parameters;
+    my $user_id	 = $params->{user_id};
     my $username = $params->{username};
-    my $json     = JSON::PP->new->ascii->pretty->allow_nonref;
-    my $session  = $env->{'psgix.session'};
+    my $json	 = JSON::PP->new->ascii->pretty->allow_nonref;
+    my $session	 = $env->{'psgix.session'};
 
     my $res = Plack::Response->new( 200 );
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -597,10 +596,10 @@ sub roles {
     my $template = HTML::Template::Expr->new( filename => "/app/template/roles.tmpl", die_on_bad_params => 0 );
 
     $template->param(
-	nonce     => $env->{'plack.nonce'},
-	roles     => $roles,
+	nonce	  => $env->{'plack.nonce'},
+	roles	  => $roles,
 	username  => $params->{username},
-	user_id   => $user_id,
+	user_id	  => $user_id,
 	my_roles  => \@role_array
 	);
     $res->body( $template->output );
@@ -611,17 +610,17 @@ sub roles {
 }
 
 sub totp {
-    my $env     = shift;
-    my $error   = shift;
-    my $req     = Plack::Request->new( $env );
-    my $params  = $req->parameters;
+    my $env	= shift;
+    my $error	= shift;
+    my $req	= Plack::Request->new( $env );
+    my $params	= $req->parameters;
     my $session = $env->{'psgix.session'};
 
     $params->{code} =~ s/[^0-9]//g;
 
     my $res = Plack::Response->new( 200 );
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     my $template = HTML::Template::Expr->new( filename => "/app/template/totp.tmpl", die_on_bad_params => 0 );
 
@@ -670,7 +669,7 @@ sub totp {
 	    my $gen = new Authen::TOTP( secret => $ENV{TOTP_SECRET} );
 
 	    if ( $params->{code} && $gen->validate_otp(otp => $params->{code}, base32secret => $params->{base32secret}, tolerance => 2) ) {
-		$template->param( valid   => 1 );
+		$template->param( valid	  => 1 );
 
 		my $sql = "UPDATE ai_users SET totp_secret = ?, totp_enabled = true WHERE id = ?";
 
@@ -701,12 +700,14 @@ sub totp {
 
 	my $uri = $gen->generate_otp(user => $row->{email}, issuer =>$ENV{TOTP_ISSUER} );
 
-	my $url = "https://chart.googleapis.com/chart?chs=150x150&chld=M|0&cht=qr&chl=$uri";
+	my $qrcode = GD::Barcode::QRcode->new($uri, { Ecc => 'L', Version => 10, ModuleSize => 3 });
+	my $png_data = $qrcode->plot->png;
+	my $base64_image = encode_base64($png_data);
 
 	$template->param(
-	    enable       => 1,
+	    enable	 => 1,
 	    base32secret => $base32secret,
-	    qrcode       => $url
+		base64_image => $base64_image
 	    );
     }
 
@@ -726,7 +727,7 @@ sub error {
 
     my $res = Plack::Response->new( 200 );
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     $res->body( $template->output );
 
@@ -744,7 +745,7 @@ my $register_app = sub {
 
     my $res = Plack::Response->new( 200 );
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     $res->body( $template->output );
 
@@ -752,9 +753,9 @@ my $register_app = sub {
 };
 
 sub check_agent_id {
-    my $env      = shift;
-    my $error    = shift;
-    my $req      = Plack::Request->new( $env );
+    my $env	 = shift;
+    my $error	 = shift;
+    my $req	 = Plack::Request->new( $env );
     my $agent_id = $req->param( 'agent_id' );
 
     if ( $agent_id eq '' ) {
@@ -769,12 +770,12 @@ sub check_agent_id {
 }
 
 sub agent {
-    my $env     = shift;
-    my $req     = Plack::Request->new( $env );
-    my $params  = $req->parameters;
-    my $id      = $params->{id};
-    my $agent   = $params->{agent_id};
-    my $json    = JSON::PP->new->ascii->pretty->allow_nonref;
+    my $env	= shift;
+    my $req	= Plack::Request->new( $env );
+    my $params	= $req->parameters;
+    my $id	= $params->{id};
+    my $agent	= $params->{agent_id};
+    my $json	= JSON::PP->new->ascii->pretty->allow_nonref;
     my $session = $env->{'psgix.session'};
 
     my $dbh = DBI->connect(
@@ -843,37 +844,37 @@ sub agent {
 	    }
 
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/conversation.tmpl", die_on_bad_params => 0 );
-	    my $start =  ($p->{'ai_end_date'}   / 1000) - 5000;
-	    my $end   =  ($p->{'ai_start_date'} / 1000) + 5000;
-	    
+	    my $end   =	 ($p->{'ai_end_date'}	/ 1000) + 5000;
+	    my $start =	 ($p->{'ai_start_date'} / 1000) - 5000;
+
 	    my $grafana_url = "https://grafana.proxy.signalwire.cloud/grafana/d/18d8e226-2f9e-4485-a1cf-31bd98ff6ff1/support-logs?orgId=1&from=$start&to=$end&var-tenant=us-west&var-search_string=$p->{'call_id'}";
-	    
+
 	    $template->param(
 		nav		    => @nav,
-		nonce               => $env->{'plack.nonce'},
-		agent_id            => $agent,
+		nonce		    => $env->{'plack.nonce'},
+		agent_id	    => $agent,
 		next_id		    => $next_id ? "/agent?id=$next_id&agent_id=$agent" : "/agent?agent_id=$agent",
 		prev_id		    => $prev_id ? "/agent?id=$prev_id&agent_id=$agent" : "/agent?agent_id=$agent",
 		next_text	    => $next_id ? "Next >"     : "",
 		prev_text	    => $prev_id ? "< Previous" : "",
-		call_id             => $p->{'call_id'},
-		call_start_date     => $p->{'call_start_date'},
-		call_log            => $p->{'call_log'},
-		swaig_log	    => $p->{'swaig_log'},
-		caller_id_name      => $p->{'caller_id_name'},
-		caller_id_number    => $p->{'caller_id_number'},
-		total_output_tokens => $p->{'total_output_tokens'},
-		total_input_tokens  => $p->{'total_input_tokens'},
-		grafana_url         => $grafana_url,
+		call_id		    => $p->{'call_id'} ? $p->{'call_id'} : "",
+		call_start_date	    => $p->{'call_start_date'} ? $p->{'call_start_date'} : "",
+		call_log	    => $p->{'call_log'} ? $p->{'call_log'} : "",
+		swaig_log	    => $p->{'swaig_log'} ? $p->{'swaig_log'} : [],
+		caller_id_name	    => $p->{'caller_id_name'} ? $p->{'caller_id_name'} : "UNKNOWN",
+		caller_id_number    => $p->{'caller_id_number'} ? $p->{'caller_id_number'} : "0000000",
+		total_output_tokens => $p->{'total_output_tokens'} ? $p->{'total_output_tokens'} : 0,
+		total_input_tokens  => $p->{'total_input_tokens'} ? $p->{'total_input_tokens'} : 0,
+		grafana_url	    => $grafana_url,
 		is_admin	    => $session->{is_admin},
-		raw_json            => $json->encode( $p ),
-		record_call_url     => $p->{SWMLVars}->{record_call_url} );
+		raw_json	    => $json->encode( $p ),
+		record_call_url	    => $p->{SWMLVars}->{record_call_url} );
 
 	    my $res = Plack::Response->new( 200 );
 
-	    $res->content_type( 'text/html' );
+	    $res->content_type( 'text/html; charset=UTF-8' );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} else {
@@ -886,9 +887,9 @@ sub agent {
 	    return $res->finalize;
 	}
     } else {
-	my $page_size    = 20;
+	my $page_size	 = 20;
 	my $current_page = $params->{page} || 1;
-	my $offset       = ( $current_page - 1 ) * $page_size;
+	my $offset	 = ( $current_page - 1 ) * $page_size;
 
 	my $sql = "SELECT * FROM ai_post_prompt WHERE agent_id = ? ORDER BY created DESC LIMIT ? OFFSET ?";
 
@@ -901,10 +902,10 @@ sub agent {
 	while ( my $row = $sth->fetchrow_hashref ) {
 	    my $p = $json->decode( $row->{data} );
 
-	    $row->{caller_id_name}       = $p->{caller_id_name};
-	    $row->{caller_id_number}     = $p->{caller_id_number};
-	    $row->{call_id}              = $p->{call_id};
-	    $row->{summary}              = $p->{post_prompt_data}->{substituted};
+	    $row->{caller_id_name}	 = $p->{caller_id_name} || "UNKNOWN";
+	    $row->{caller_id_number}	 = $p->{caller_id_number} || "0000000";
+	    $row->{call_id}		 = $p->{call_id};
+	    $row->{summary}		 = $p->{post_prompt_data}->{substituted} || $p->{post_prompt_data}->{raw};
 	    push @table_contents, $row;
 	}
 
@@ -943,34 +944,34 @@ sub agent {
 	my $template = HTML::Template::Expr->new( filename => "/app/template/agent.tmpl", die_on_bad_params => 0 );
 
 	$template->param(
-	    nav                  => @nav,
-	    nonce                => $env->{'plack.nonce'},
-	    agent_id             => $agent,
-	    table_contents       => \@table_contents,
-	    next_url             => $next_url,
-	    prev_url             => $prev_url
+	    nav			 => @nav,
+	    nonce		 => $env->{'plack.nonce'},
+	    agent_id		 => $agent,
+	    table_contents	 => \@table_contents,
+	    next_url		 => $next_url,
+	    prev_url		 => $prev_url
 	    );
 
 	my $res = Plack::Response->new( 200 );
 
-	$res->content_type( 'text/html' );
+	$res->content_type( 'text/html; charset=UTF-8' );
 
-	$res->body( $template->output );
+	$res->body( encode('UTF-8', $template->output ) );
 
 	return $res->finalize;
     }
 }
 
 sub summary {
-    my $env     = shift;
-    my $req     = Plack::Request->new( $env );
-    my $agent   = $req->param( 'agent_id' );
-    my $id      = $req->param( 'id' );
-    my $method  = $req->method;
-    my $json    = JSON::PP->new->ascii->pretty->allow_nonref;
-    my $params  = $req->parameters;
+    my $env	= shift;
+    my $req	= Plack::Request->new( $env );
+    my $agent	= $req->param( 'agent_id' );
+    my $id	= $req->param( 'id' );
+    my $method	= $req->method;
+    my $json	= JSON::PP->new->ascii->pretty->allow_nonref;
+    my $params	= $req->parameters;
     my $session = $env->{'psgix.session'};
-    my $res     = Plack::Response->new( 200 );
+    my $res	= Plack::Response->new( 200 );
 
 
     my $dbh = DBI->connect(
@@ -980,77 +981,77 @@ sub summary {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
     if ( $method eq 'POST' ) {
-	if ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_summary' ) ) {
-	    my $sql = "DELETE FROM ai_summary WHERE agent_id = ? AND id = ?";
+		if ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_summary' ) ) {
+		my $sql = "DELETE FROM ai_summary WHERE agent_id = ? AND id = ?";
 
-	    my $sth = $dbh->prepare( $sql );
+		my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $agent, $id ) or die $DBI::errstr;
+		$sth->execute( $agent, $id ) or die $DBI::errstr;
 
-	    $sth->finish;
+		$sth->finish;
 
-	    $dbh->disconnect;
+		$dbh->disconnect;
 
-	    $res->redirect( "/summary?agent_id=$agent" );
+		$res->redirect( "/summary?agent_id=$agent" );
 
-	    return $res->finalize;
-	}
+		return $res->finalize;
+		}
     } else {
-	if ( check_role( $session ,'admin_view,view_summary') ) {
-	    my $select_sql = "SELECT * FROM ai_summary WHERE agent_id = ? ORDER BY created DESC";
+		if ( check_role( $session ,'admin_view,view_summary') ) {
+		    my $select_sql = "SELECT * FROM ai_summary WHERE agent_id = ? ORDER BY created DESC";
 
-	    my $sth = $dbh->prepare( $select_sql );
+		    my $sth = $dbh->prepare( $select_sql );
 
-	    $sth->execute( $agent ) or die $DBI::errstr;
+		$sth->execute( $agent ) or die $DBI::errstr;
 
-	    my $table_contents = $sth->fetchall_arrayref({});
+		my $table_contents = $sth->fetchall_arrayref({});
 
-	    $sth->finish;
+		$sth->finish;
 
-	    $dbh->disconnect;
+		$dbh->disconnect;
 
-	    my $template = HTML::Template::Expr->new( filename => "/app/template/summary.tmpl", die_on_bad_params => 0 );
+		my $template = HTML::Template::Expr->new( filename => "/app/template/summary.tmpl", die_on_bad_params => 0 );
 
-	    $template->param(
-		nav            => @nav,
-		nonce          => $env->{'plack.nonce'},
-		table_contents => $table_contents,
-		agent_id       => $agent,
-		);
+		$template->param(
+			nav	       => @nav,
+			nonce	       => $env->{'plack.nonce'},
+			table_contents => $table_contents,
+			agent_id       => $agent,
+			);
 
-	    my $res = Plack::Response->new( 200 );
+		my $res = Plack::Response->new( 200 );
 
-	    $res->content_type( 'text/html' );
+		$res->content_type( 'text/html; charset=UTF-8' );
 
-	    $res->body( $template->output );
+		$res->body( encode('UTF-8', $template->output ) );
 
-	    return $res->finalize;
-	} else {
-	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
+		return $res->finalize;
+		} else {
+		    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
 
-	    $template->param(message => "You do not have permission to access this resource");
+		$template->param(message => "You do not have permission to access this resource");
 
-	    $res->status( 403 );
+		$res->status( 403 );
 
-	    $res->body( $template->output );
+		$res->body( encode('UTF-8', $template->output ) );
 
-	    $dbh->disconnect;
+		$dbh->disconnect;
 
-	    return $res->finalize;
-	}
+			return $res->finalize;
+		}
     }
 }
 
 sub messages {
-    my $env     = shift;
-    my $req     = Plack::Request->new( $env );
-    my $id      = $req->param( 'id' );
-    my $agent   = $req->param( 'agent_id' );
-    my $method  = $req->method;
-    my $json    = JSON::PP->new->ascii->pretty->allow_nonref;
-    my $params  = $req->parameters;
+    my $env	= shift;
+    my $req	= Plack::Request->new( $env );
+    my $id	= $req->param( 'id' );
+    my $agent	= $req->param( 'agent_id' );
+    my $method	= $req->method;
+    my $json	= JSON::PP->new->ascii->pretty->allow_nonref;
+    my $params	= $req->parameters;
     my $session = $env->{'psgix.session'};
-    my $res     = Plack::Response->new( 200 );
+    my $res	= Plack::Response->new( 200 );
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -1091,15 +1092,15 @@ sub messages {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/messages.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav            => @nav,
-		nonce          => $env->{'plack.nonce'},
+		nav	       => @nav,
+		nonce	       => $env->{'plack.nonce'},
 		table_contents => $table_contents,
 		agent_id       => $agent,
 		);
 
-	    $res->content_type( 'text/html' );
+	    $res->content_type( 'text/html; charset=UTF-8' );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} else {
@@ -1109,7 +1110,7 @@ sub messages {
 
 	    $res->status( 403 );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -1119,14 +1120,14 @@ sub messages {
 }
 
 my $laml_app = sub {
-    my $env     = shift;
-    my $req     = Plack::Request->new( $env );
-    my $to      = $req->param( 'To' );
-    my $from    = $req->param( 'From' );
+    my $env	= shift;
+    my $req	= Plack::Request->new( $env );
+    my $to	= $req->param( 'To' );
+    my $from	= $req->param( 'From' );
     my $message = $req->param( 'Body' );
-    my $sid     = $req->param( 'MessageSid' );
-    my $agent   = $req->param( 'agent_id' );
-    my $resp    = SignalWire::CompatXML->new;
+    my $sid	= $req->param( 'MessageSid' );
+    my $agent	= $req->param( 'agent_id' );
+    my $resp	= SignalWire::CompatXML->new;
 
     $resp->name( 'Response' );
 
@@ -1153,22 +1154,100 @@ my $laml_app = sub {
     return $res->finalize;
 };
 
+my $accounting_app = sub {
+    my $env	    = shift;
+    my $req	    = Plack::Request->new( $env );
+
+    my $dbh = DBI->connect(
+	"dbi:Pg:dbname=$database;host=$host;port=$port",
+	$dbusername,
+	$dbpassword,
+	{ AutoCommit => 1, RaiseError => 1 }) or die $DBI::errstr;
+
+    my $sql = "
+    SELECT
+	-- Group by month and year
+	TO_CHAR(created, 'YYYY-MM') AS month_year,
+
+	-- Averages per month
+	ROUND(AVG((data->>'total_asr_cost_factor')::numeric), 3) AS avg_asr_cost_factor,
+	ROUND(AVG((data->>'total_tts_chars_per_min')::numeric), 3) AS avg_tts_chars_per_min,
+	ROUND(AVG((data->>'total_wire_input_tokens_per_minute')::numeric), 3) AS avg_tokens_in_per_min,
+	ROUND(AVG((data->>'total_wire_output_tokens_per_minute')::numeric), 3) AS avg_tokens_out_per_min,
+
+	-- Sums per month
+	SUM((data->>'total_tts_chars_per_min')::numeric) AS sum_tts_chars_per_min,
+	SUM((data->>'total_wire_input_tokens_per_minute')::numeric) AS sum_tokens_in,
+	SUM((data->>'total_wire_output_tokens_per_minute')::numeric) AS sum_tokens_out
+    FROM
+	ai_post_prompt
+    WHERE
+	jsonb_exists(data, 'total_asr_cost_factor')
+	AND jsonb_exists(data, 'total_tts_chars_per_min')
+	AND jsonb_exists(data, 'total_wire_input_tokens_per_minute')
+	AND jsonb_exists(data, 'total_wire_output_tokens_per_minute')
+    GROUP BY
+	TO_CHAR(created, 'YYYY-MM')
+    ORDER BY
+	TO_CHAR(created, 'YYYY-MM') ASC;
+    ";
+
+    # Load the HTML template
+    my $template = HTML::Template::Expr->new(
+	filename	   => "/app/template/averages.tmpl",
+	die_on_bad_params  => 0,  # Prevents the template from dying on missing parameters
+    );
+    # Prepare the data for the template
+    my @monthly_data;
+    my $sth = $dbh->prepare($sql) or die $DBI::errstr;
+    $sth->execute() or die $DBI::errstr;
+    while (my $row = $sth->fetchrow_hashref()) {
+	push @monthly_data, {
+	    month_year => $row->{month_year},
+	    avg_asr_cost_factor => sprintf("%.3f", $row->{avg_asr_cost_factor}),
+	    avg_tts_chars_per_min => sprintf("%.3f", $row->{avg_tts_chars_per_min}),
+	    avg_tokens_in_per_min => sprintf("%.3f", $row->{avg_tokens_in_per_min}),
+	    avg_tokens_out_per_min => sprintf("%.3f", $row->{avg_tokens_out_per_min}),
+	    sum_tts_chars_per_min => sprintf("%.0f", $row->{sum_tts_chars_per_min}),
+	    sum_tokens_in => sprintf("%.0f", $row->{sum_tokens_in}),
+	    sum_tokens_out => sprintf("%.0f", $row->{sum_tokens_out})
+	};
+    }
+    $sth->finish();
+    $dbh->disconnect();
+
+    $template->param( monthly_data => \@monthly_data );
+    # Create a new Plack::Response object
+    my $res = Plack::Response->new(200);
+    $res->content_type('text/html; charset=UTF-8');
+    $res->body(encode('UTF-8', $template->output ));
+
+    # Return the response
+    return $res->finalize;
+
+
+};
+
 my $swml_app = sub {
-    my $env         = shift;
-    my $req         = Plack::Request->new( $env );
-    my $agent       = $req->param( 'agent_id' );
-    my $post_data   = decode_json( $req->raw_body );
-    my $swml        = SignalWire::ML->new;
-    my $from        = $post_data->{call}->{from};
-    my $ai          = 1;
+    my $env	    = shift;
+    my $req	    = Plack::Request->new( $env );
+    my $agent	    = $req->param( 'agent_id' );
+    my $outbound    = $req->param( 'outbound' ) // 0;
+	my $format	    = $req->param( 'format' ) // 'json';
+	my $post_data   = decode_json( $req->raw_body ? $req->raw_body : '{}' );
+    my $swml	    = SignalWire::ML->new;
+    my $from	    = $post_data->{call}->{from};
+    my $ai	    = 1;
     my $prompt;
     my $post_prompt;
+    my $outbound_prompt;
+    my $outbound_post_prompt;
     my $assistant;
     my %config;
     my @prompt_fields = qw( FREQUENCY_PENALTY PRESENCE_PENALTY MAX_TOKENS TOP_P TEMPERATURE CONFIDENCE BARGE_CONFIDENCE );
 
     if ($from =~ /sip:(.*?)@/) {
-	$from = $1;
+		$from = $1;
     }
 
     my $dbh = DBI->connect(
@@ -1178,541 +1257,434 @@ my $swml_app = sub {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
     tie %config, 'MyTieConfig',
-	host     => $host,
-	port     => $port,
-	dbname   => $database,
-	user     => $dbusername,
+	host	 => $host,
+	port	 => $port,
+	dbname	 => $database,
+	user	 => $dbusername,
 	password => $dbpassword,
-	table    => 'ai_config',
+	table	 => 'ai_config',
 	agent_id => $agent;
 
     {
-	my $sql = 'SELECT prompt,post_prompt FROM ai_prompt WHERE agent_id = ?';
+		my $sql = 'SELECT * FROM ai_prompt WHERE agent_id = ?';
+		my $sth = $dbh->prepare($sql);
 
-	my $sth = $dbh->prepare($sql);
+		$sth->execute($agent) or die $DBI::errstr;
 
-	$sth->execute($agent) or die $DBI::errstr;
+		my $row = $sth->fetchrow_hashref();
 
-	my $row = $sth->fetchrow_hashref();
+		$prompt		      = $row->{prompt};
+		$post_prompt	      = $row->{post_prompt};
+		$outbound_prompt      = $row->{outbound_prompt};
+		$outbound_post_prompt = $row->{outbound_post_prompt};
+		$assistant   = $config{ASSISTANT};
 
-
-	$prompt      = $row->{prompt};
-	$post_prompt = $row->{post_prompt};
-	$assistant   = $config{ASSISTANT};
-
-	$sth->finish;
+		$sth->finish;
     }
 
     if ( $config{ENABLE_ANSWER_DELAY} ) {
-	my $delay = $config{ANSWER_DELAY_LENGTH} ? $config{ANSWER_DELAY_LENGTH} : 10;
-	broadcast_by_agent_id( $agent, "Answering call in $delay seconds" );
-	$swml->add_application( "main", "play", "silence:$delay");
+		my $delay = $config{ANSWER_DELAY_LENGTH} ? $config{ANSWER_DELAY_LENGTH} : 10;
+		broadcast_by_agent_id( $agent, "Answering call in $delay seconds" );
+		$swml->add_application( "main", "play", "silence:$delay");
+    }
+    if ( $config{ENABLE_AMR_WB} ) {
+		$swml->add_application( "main", "answer", { codecs => "AMR-WB,PCMU,PCMA" } );
+    } else {
+		$swml->add_application( "main", "answer" );
     }
 
-    $swml->add_application( "main", "answer" );
-
     if ( $config{ENABLE_SEND_DIGITS_ON_ANSWER} ) {
-	my $digits = $config{SEND_DIGITS_ON_ANSWER} ||= 1;
-	$swml->add_application( "main", "send_digits", "$digits" );
-	$swml->add_application( "main", 'play', "silence:1" );
+		my $digits = $config{SEND_DIGITS_ON_ANSWER} ||= 1;
+		$swml->add_application( "main", "send_digits", "$digits" );
+		$swml->add_application( "main", 'play', "silence:1" );
     }
 
     if ( $config{ENABLE_DENOISE} ) {
-	broadcast_by_agent_id( $agent, "Denoise Avtivated" );
-	$swml->add_application( "main", "denoise" );
+		broadcast_by_agent_id( $agent, "Denoise Avtivated" );
+		$swml->add_application( "main", "denoise" );
     }
 
     if ( $config{ENABLE_RECORD} ) {
-	broadcast_by_agent_id( $agent, "Recording call" );
-	$swml->add_application( "main", "record_call", { format => 'wav', stereo => 'true' } );
+		broadcast_by_agent_id( $agent, "Recording call" );
+		if ( $outbound ) {
+			$swml->add_application( "main", "record_call", { format => 'wav', stereo => 'true' } );
+		} else {
+			$swml->add_application( "main", "record_call", { format => 'wav', stereo => 'true' } );
+		}
     }
 
     if ( $config{ENABLE_CNAM} &&  $config{ACCOUNT_SID} && $config{AUTH_TOKEN} && $config{SPACE_NAME} && $config{API_VERSION} ) {
+		broadcast_by_agent_id( $agent, "Looking up caller name" );
+		my $data;
+		my $caller_name;
+		my $sw = SignalWire::RestAPI->new(
+			AccountSid  => $config{ACCOUNT_SID},
+			AuthToken   => $config{AUTH_TOKEN},
+			Space	    => $config{SPACE_NAME},
+			API_VERSION => $config{API_VERSION}
+			);
 
-	broadcast_by_agent_id( $agent, "Looking up caller name" );
-	my $data;
-	my $caller_name;
+		if ( $from ) {
+			my $response = $sw->GET( "lookup/phone_number/$from", include => "carrier,cnam" );
 
-	my $sw = SignalWire::RestAPI->new(
-	    AccountSid  => $config{ACCOUNT_SID},
-	    AuthToken   => $config{AUTH_TOKEN},
-	    Space       => $config{SPACE_NAME},
-	    API_VERSION => $config{API_VERSION}
-	    );
+			eval {
+				$data = decode_json( $response->{content} );
+			};
 
-	if ( $from ) {
-	    my $response = $sw->GET( "lookup/phone_number/$from", include => "carrier,cnam" );
+			if ( ! $@ ) {
+				my $caller_name	 = $data->{cnam}->{caller_id};
+				my $caller_city	 = $data->{carrier}->{city};
+				my $caller_state = $data->{location};
+				my $caller_lec	 = $data->{carrier}->{lec};
+				my $caller_line	 = $data->{carrier}->{linetype};
 
-	    eval {
-		$data = decode_json( $response->{content} );
-	    };
+				if ( $caller_city && $caller_state ) {
+					$swml->add_application( "main", "set", { city => "$caller_city", state => "$caller_state", lec => "$caller_lec", line => "$caller_line" } );
+				}
 
-	    if ( ! $@ ) {
-		my $caller_name  = $data->{cnam}->{caller_id};
-		my $caller_city  = $data->{carrier}->{city};
-		my $caller_state = $data->{location};
-		my $caller_lec   = $data->{carrier}->{lec};
-		my $caller_line  = $data->{carrier}->{linetype};
-
-		if ( $caller_city && $caller_state ) {
-		    $swml->add_application( "main", "set", { city => "$caller_city", state => "$caller_state", lec => "$caller_lec", line => "$caller_line" } );
+				if ( $caller_name ) {
+					$swml->add_application( "main", "set", { cnam => "$caller_name", from => "$from", num_spoken => e164_to_spoken( $from ) } );
+				}
+			} else {
+				$swml->add_application( "main", "set", { cnam => "UNKNOWN", from => "$from", num_spoken => "UNKNOWN" } );
+			}
 		}
-
-		if ( $caller_name ) {
-		    $swml->add_application( "main", "set", { cnam => "$caller_name", from => "$from", num_spoken => e164_to_spoken( $from ) } );
-		}
-	    } else {
-		$swml->add_application( "main", "set", { cnam => "UNKNOWN", from => "$from", num_spoken => "UNKNOWN" } );
-	    }
 	}
-    }
 
     if ( $config{ENABLE_BYPASS} && $config{CUSTODIAN_CELL} ) {
-	broadcast_by_agent_id( $agent, "Checking bypass list" );
-	foreach my $source ( split( /\|/, $config{BYPASS_SOURCES} ) ) {
-	    if ( $source ne '' && $from =~ /\Q$source\E/ ) {
-		$ai = 0;
-		$swml->add_application( "main", "connect" => { to => $config{CUSTODIAN_CELL} } );
-		last;
-	    }
-	}
+		broadcast_by_agent_id( $agent, "Checking bypass list" );
+		foreach my $source ( split( /\|/, $config{BYPASS_SOURCES} ) ) {
+			if ( $from && $source ne '' && $from =~ /\Q$source\E/ ) {
+			$ai = 0;
+			$swml->add_application( "main", "connect" => { to => $config{CUSTODIAN_CELL} } );
+			last;
+			}
+		}
     }
 
     if ( $ai ) {
-	foreach my $k (@prompt_fields) {
-	    if ( $config{$k} ) {
-		broadcast_by_agent_id( $agent, "Setting $k to $config{$k}" );
-		$swml->set_aiprompt({ lc $k => $config{$k} });
-	    }
-	}
-
-	$swml->set_aiprompt( { text => $prompt } );
-
-	if ( $config{ENABLE_POST_PROMPT} ) {
-	    foreach my $k (@prompt_fields) {
-		if ( $config{$k} ) {
-		    broadcast_by_agent_id( $agent, "Setting $k to $config{$k}" );
-		    $swml->set_aipost_prompt( { lc $k => $config{$k} } );
+		foreach my $k (@prompt_fields) {
+			if ( $config{$k} ) {
+			broadcast_by_agent_id( $agent, "Setting $k to $config{$k}" );
+			$swml->set_aiprompt({ lc $k => $config{$k} });
+			}
 		}
-	    }
 
-	    $swml->set_aipost_prompt( { text => $post_prompt } );
-	}
-
-	{
-	    my $sql = "SELECT hint FROM ai_hints WHERE agent_id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $agent ) or die $DBI::errstr;
-
-	    while ( my $row = $sth->fetchrow_hashref ) {
-		broadcast_by_agent_id( $agent, "Setting AI hints to $row->{hint}" );
-		$swml->add_aihints( $row->{hint} );
-	    }
-
-	    $sth->finish;
-	}
-
-	{
-	    my $sql = "SELECT * FROM ai_language WHERE agent_id = ? ORDER BY language_order ASC";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $agent ) or die $DBI::errstr;
-
-	    my $languages = $sth->fetchall_arrayref({});
-
-	    $sth->finish;
-
-	    foreach my $language ( @$languages ) {
-		my @filler   = split( /\,/, $language->{fillers}  );
-		broadcast_by_agent_id( $agent, "Adding language $language->{code}" );
-		$swml->add_ailanguage({
-		    code    => $language->{code},
-		    name    => $language->{name},
-		    voice   => $language->{voice},
-		    engine  => $language->{engine},
-		    ( @filler ? ( fillers => \@filler ) : ())
-				      });
-	    }
-	}
-
-	$swml->set_agent_meta_data( { agent_id => $agent } );
-
-	if ( $config{ENABLE_DEBUG_WEBHOOK} && $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) {
-	    broadcast_by_agent_id( $agent, "Adding debug webhook" );
-	    $swml->add_aiparams( { debug_webhook_url => "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/debughook?agent_id=$agent" } );
-	}
-
-	foreach my $key ( @ai_params ) {
-	    if ( $config{$key} ) {
-		my $param;
-		if ( $key eq 'SAVE_CONVERSATION' ) {
-		    $param = { save_conversation => 'true', conversation_id => "$from" };
+		if ( $outbound ) {
+			$swml->set_aiprompt( { text => $outbound_prompt } );
 		} else {
-		    $param = { lc( $key ) => $config{$key} };
+			$swml->set_aiprompt( { text => $prompt } );
 		}
 
-		broadcast_by_agent_id( $agent, "Setting $key to $config{$key}" );
-
-		$swml->add_aiparams( $param );
-	    }
-	}
-
-	if ( $config{SET_CONVERSATION_ID} ) {
-	    broadcast_by_agent_id( $agent, "Setting conversation_id to $from" );
-	    $swml->add_aiparams( { conversation_id => "$from" } );
-	}
-
-	if ( $config{ENABLE_PRONOUNCE} ) {
-	    my $sql = "SELECT * FROM ai_pronounce WHERE agent_id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    my $rv  = $sth->execute( $agent ) or die $DBI::errstr;
-
-	    my $pronounces = $sth->fetchall_arrayref({});
-
-	    foreach my $pronounce ( @$pronounces ) {
-		broadcast_by_agent_id( $agent, "Adding pronounce $pronounce->{replace_this} with $pronounce->{replace_with}, Ignore case: $pronounce->{ignore_case}" );
-		$swml->add_aipronounce( {
-		    replace     => $pronounce->{replace_this},
-		    with        => $pronounce->{replace_with},
-		    ignore_case => $pronounce->{ignore_case} } );
-	    }
-	}
-
-	if ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) {
-	    if ( $config{ENABLE_POST_PROMPT} ) {
-		broadcast_by_agent_id( $agent, "Adding post prompt defaults" );
-		$swml->set_aipost_prompt_url( { post_prompt_url           => "https://$env->{HTTP_HOST}/post?agent_id=$agent",
-						post_prompt_auth_user     => $config{AUTH_USERNAME},
-						post_prompt_auth_password => $config{AUTH_PASSWORD}
-					      } );
-	    }
-
-	    if ( $config{ENABLE_SWAIG} ) {
-		broadcast_by_agent_id( $agent, "Adding SWAIG defaults" );
-		$swml->add_aiswaigdefaults( { web_hook_url           => "https://$env->{HTTP_HOST}/swaig?agent_id=$agent",
-					      web_hook_auth_user     => $config{AUTH_USERNAME},
-					      web_hook_auth_password => $config{AUTH_PASSWORD}
-					    } );
-	    }
-	} else {
-	    if ( $config{ENABLE_POST_PROMPT} ) {
-		broadcast_by_agent_id( $agent, "Adding post prompt defaults" );
-		$swml->set_aipost_prompt_url( { post_prompt_url => "https://$env->{HTTP_HOST}/post?agent_id=$agent" } );
-	    }
-
-	    if ( $config{ENABLE_SWAIG} ) {
-		broadcast_by_agent_id( $agent, "Adding SWAIG defaults" );
-		$swml->add_aiswaigdefaults( { web_hook_url => "https://$env->{HTTP_HOST}/swaig?agent_id=$agent" } );
-	    }
-	}
-
-	if ( $config{ENABLE_SWAIG} ) {
-	    my $output;
-
-	    my $sql = "SELECT * FROM ai_function WHERE agent_id = ? ORDER BY created DESC";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $agent ) or die $DBI::errstr;
-
-	    my @functions;
-
-	    while ( my $row = $sth->fetchrow_hashref ) {
-		my @args;
-		my $argcount = 0;
-		my @required;
-		
-		if ( $row->{code} ) {
-		    my $arguments;
-
-		    $arguments->{type} = "object";
-
-		    my $argsql = "SELECT * FROM ai_function_argument WHERE function_id = ? AND agent_id = ? ORDER BY created DESC";
-
-		    my $argsth = $dbh->prepare( $argsql );
-
-		    $argsth->execute( $row->{id}, $agent ) or die $DBI::errstr;
-
-		    while ( my $arg = $argsth->fetchrow_hashref ) {
-			next if $arg->{active} == 0;
-			$argcount++;
-			$arguments->{properties}->{$arg->{name}} = { type => $arg->{type}, description => $arg->{description} };
-			push @required, $arg->{name} if $arg->{required};
-		    }
-
-		    $arguments->{required} = \@required if scalar @required > 0;
-		    
-		    $argsth->finish;
-
-		    if  ( $argcount > 0 ) {
-			broadcast_by_agent_id( $agent, "Adding function $row->{name}" );
-		    
-			$swml->add_aiswaigfunction({
-			    active   => $row->{active} ? 'true' : 'false',
-			    function => $row->{name},
-			    purpose  => $row->{purpose},
-			    argument => $arguments });
-		    } else {
-			broadcast_by_agent_id( $agent, "Skipping function $row->{name}, no arguments defined." );
-		    }
-	    }
-
-	    if ( $config{ENABLE_CONTEXTS} ) {
-		my $sql = "SELECT * FROM ai_context WHERE agent_id = ? ORDER BY id ASC";
-		my $contextcount = 0;
-		my $sth = $dbh->prepare( $sql );
-
-		$sth->execute( $agent ) or die $DBI::errstr;
-
-		my @context_expressions;
-
-		while ( my $row = $sth->fetchrow_hashref ) {
-		    my @actions;
-
-		    if ( $row->{toggle_function} ) {
-			foreach my $function ( split( /\|/, $row->{toggle_function} ) ) {
-			    my ( $function, $args ) = split( /:/, $function );
-			    broadcast_by_agent_id( $agent, "Adding toggle function $function with args $args" );
-			    push @actions, {
-				toggle_functions => [{
-				    function => $function,
-				    active   => $args }] };
+		if ( $config{ENABLE_POST_PROMPT} ) {
+			foreach my $k (@prompt_fields) {
+				if ( $config{$k} ) {
+					broadcast_by_agent_id( $agent, "Setting $k to $config{$k}" );
+					$swml->set_aipost_prompt( { lc $k => $config{$k} } );
+				}
 			}
-		    }
-		    
-		    broadcast_by_agent_id( $agent, "Adding context switch with consolidate $row->{consolidate}, full reset $row->{full_reset}, user prompt $row->{user_prompt}, system prompt $row->{system_prompt}" );
-
-		    push @actions, {
-			context_switch => {
-			    consolidate   => $row->{consolidate},
-			    full_reset    => $row->{full_reset},
-			    user_prompt   => $row->{user_prompt},
-			    system_prompt => $row->{system_prompt} } };
-
-		    my $expression = {
-			string  => '${args.context}',
-			pattern => $row->{pattern},
-			output  => {
-			    response => 'OK',
-			    action   => \@actions
+			if ( $outbound ) {
+				$swml->set_aipost_prompt( { text => $outbound_post_prompt } );
+			} else {
+			$swml->set_aipost_prompt( { text => $post_prompt } );
 			}
-		    };
-		    $contextcount++;
-		    push @context_expressions, $expression;
 		}
 
-		if ( $contextcount > 0 ) {
-		    broadcast_by_agent_id( $agent, "Adding context switch function" );
-		    $swml->add_aiswaigfunction({
-			function => "switch_context",
-			purpose  => "to switch contexts ",
-			argument => {
-			    type => "object",
-			    properties => {
-				context => {
-				    type        => "string",
-				    description => "The name of the new context" }
-			    },
-			},
-			data_map => {
-			    expressions => \@context_expressions,
-			}});
-		}
-		}
-	    }
-	    
-	    if ( $config{ENABLE_STEPS} ) {
-		my $steps = 0;
-		my $sql = "SELECT * FROM ai_steps WHERE agent_id = ? ORDER BY id ASC";
-		
-		my $sth = $dbh->prepare( $sql );
+		{
+			my $sql = "SELECT hint FROM ai_hints WHERE agent_id = ?";
 
-		$sth->execute( $agent ) or die $DBI::errstr;
+			my $sth = $dbh->prepare( $sql );
 
-		my @step_expressions;
+			$sth->execute( $agent ) or die $DBI::errstr;
 
-		while ( my $row = $sth->fetchrow_hashref ) {
-		    my @actions;
-
-		    if ( $row->{custom_action} ) {
-			my ($do, $arg, $say) = split( /\|/, $row->{custom_action}, 3 );
-			
-			if ( $do eq "send_message" ) {
-			    my $msg = SignalWire::ML->new;
-			    
-			    $msg->add_application( "main", "send_sms" => { to_number   => "$from",
-									   from_number => "$assistant",
-									   body        => "$arg, Reply STOP to stop." } );
-			    if ( $say ) {
-				push @actions, { say => "$say" };
-			    }
-			    push @actions, { SWML => $msg->render };
-			} elsif ( $do eq "transfer" ) {
-			    my $transfer = SignalWire::ML->new;
-			
-			    $transfer->add_application( "main", "connect" => { to   => $arg } );
-			
-			    if ( $say ) {
-				push @actions, { say => "$say" };
-			    }
-			    
-			    push @actions, { SWML => $transfer->render };
-			    
+			while ( my $row = $sth->fetchrow_hashref ) {
+				broadcast_by_agent_id( $agent, "Setting AI hints to $row->{hint}" );
+				$swml->add_aihints( $row->{hint} );
 			}
-		    }
 
-		    
-		    if ( $row->{toggle_function} ) {
-			foreach my $function ( split( /\|/, $row->{toggle_function} ) ) {
-			    my ( $function, $args ) = split( /:/, $function );
-			    broadcast_by_agent_id( $agent, "Adding toggle function $function with args $args" );
-			    push @actions, {
-				toggle_functions => [{
-				    function =>  $function ,
-				    active   => $args }] };
-			}
-		    }
-		    
-		    if ( $row->{ai_step_b2b_functions} ) {
-			push @actions, { back_to_back_functions => 'true' };
-		    }
-
-		    my $expression = {
-			string  => '${args.step}',
-			pattern => $row->{ai_step_pattern},
-			output  => {
-			    response => $row->{ai_step_response},
-			    ( scalar @actions > 0 ? ( action   => \@actions) : () )
-			}
-		    };
-
-		    push @step_expressions, $expression;
-		    $steps++;
+			$sth->finish;
 		}
-		
-		if ( $steps ) {
-		    $swml->add_aiswaigfunction({
-			function => "advance_step",
-			purpose  => "to advance to a particular step",
-			argument => {
-			    type => "object",
-			    properties => {
-				step => {
-				    type        => "string",
-				    description => "The step number as a string" }
-			    },
-			},
-			data_map => {
-			    expressions => \@step_expressions,
-			}});
-		}
-	    }
 
-	    if ( $config{ENABLE_SLACK_SWAIG} && $config{SLACK_WEBHOOK_URL} && $config{SLACK_CHANNEL} && $config{SLACK_USERNAME} && $config{SLACK_MESSAGE} ) {
-		broadcast_by_agent_id( $agent, "Adding slack notification function" );
-		$swml->add_aiswaigfunction({
-		    function => 'send_slack_notification',
-		    purpose => "send a slack notification with the conversation details",
-		    argument => {
-			type => "object",
-			properties => {
-			    name => {
-				type        => "string",
-				description => "Users name" },
-			    company => {
-				type        => "string",
-				description => "Company name, optional" },
-			    contactNumber => {
-				type        => "string",
-				description => "User phone number in e.164 format, required" },
-			    description => {
-				type        => "string",
-				description => "the summary of the conversation, required" } } },
-		    data_map => {
-			webhooks => [{
-			    url => $config{SLACK_WEBHOOK_URL},
-			    form_param => 'payload',
-			    method     => "POST",
-			    params     => {
-				text     => $config{SLACK_MESSAGE},
-				channel  => $config{SLACK_CHANNEL},
-				username => $config{SLACK_USERNAME},
-			    },
-			    output => {
-				response => 'slack notification sent',
-			    }}]}});
-	    }
+		{
+			my $sql = "SELECT * FROM ai_language WHERE agent_id = ? ORDER BY language_order ASC";
+
+			my $sth = $dbh->prepare( $sql );
+
+			$sth->execute( $agent ) or die $DBI::errstr;
+
+			my $languages = $sth->fetchall_arrayref({});
+
+			$sth->finish;
+
+			foreach my $language ( @$languages ) {
+				my ($function_scalar , $speech_scalar)	 = split( /\|/, $language->{fillers}, 2	 );
+
+				my @filler = split( /\,/, $function_scalar) if $function_scalar;
+				my @speech = split( /\,/, $speech_scalar) if $speech_scalar;
+
+				broadcast_by_agent_id( $agent, "Adding language $language->{code}" );
+				$swml->add_ailanguage({
+					code	=> $language->{code},
+					name	=> $language->{name},
+					voice	=> $language->{voice},
+					engine	=> $language->{engine},
+					( @speech  ? ( speech_fillers	=> \@speech ) : ()),
+					( @filler  ? ( function_fillers => \@filler ) : ())
+							});
+			}
+		}
+
+		if ( $config{ENABLE_DEBUG_WEBHOOK} && $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) {
+			broadcast_by_agent_id( $agent, "Adding debug webhook" );
+			$swml->add_aiparams( { debug_webhook_url => "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/debughook?agent_id=$agent" } );
+		}
+
+		if ( $outbound ) {
+			$swml->add_aiparams( { direction => 'outbound' } );
+		}
+
+		foreach my $key ( @ai_params ) {
+			if ( $config{$key} ) {
+				my $param;
+				if ( $key eq 'SAVE_CONVERSATION' ) {
+					$param = { save_conversation => 'true', conversation_id => "$from" };
+				} else {
+					$param = { lc( $key ) => $config{$key} };
+				}
+
+			broadcast_by_agent_id( $agent, "Setting $key to $config{$key}" );
+
+			$swml->add_aiparams( $param );
+			}
+		}
+
+		if ( $config{SET_CONVERSATION_ID} && $from ) {
+			broadcast_by_agent_id( $agent, "Setting conversation_id to $from" );
+			$swml->add_aiparams( { conversation_id => "$from" } );
+		}
+
+		if ( $config{ENABLE_PRONOUNCE} ) {
+			my $sql = "SELECT * FROM ai_pronounce WHERE agent_id = ?";
+
+			my $sth = $dbh->prepare( $sql );
+
+			my $rv	= $sth->execute( $agent ) or die $DBI::errstr;
+
+			my $pronounces = $sth->fetchall_arrayref({});
+
+			foreach my $pronounce ( @$pronounces ) {
+			broadcast_by_agent_id( $agent, "Adding pronounce $pronounce->{replace_this} with $pronounce->{replace_with}, Ignore case: $pronounce->{ignore_case}" );
+			$swml->add_aipronounce( {
+				replace	    => $pronounce->{replace_this},
+				with	    => $pronounce->{replace_with},
+				ignore_case => $pronounce->{ignore_case} } );
+			}
+		}
+
+		if ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) {
+			if ( $config{ENABLE_POST_PROMPT} ) {
+				broadcast_by_agent_id( $agent, "Adding post prompt defaults" );
+				$swml->set_aipost_prompt_url( { post_prompt_url => "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/post?agent_id=$agent" } );
+			}
+
+			if ( $config{ENABLE_SWAIG} ) {
+				broadcast_by_agent_id( $agent, "Adding SWAIG defaults" );
+				$swml->add_aiswaigdefaults( { web_hook_url	     => "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/swaig?agent_id=$agent" } );
+			}
+		} else {
+			if ( $config{ENABLE_POST_PROMPT} ) {
+				broadcast_by_agent_id( $agent, "Adding post prompt defaults" );
+				$swml->set_aipost_prompt_url( { post_prompt_url => "https://$env->{HTTP_HOST}/post?agent_id=$agent" } );
+			}
+
+			if ( $config{ENABLE_SWAIG} ) {
+				broadcast_by_agent_id( $agent, "Adding SWAIG defaults" );
+				$swml->add_aiswaigdefaults( { web_hook_url => "https://$env->{HTTP_HOST}/swaig?agent_id=$agent" } );
+			}
+		}
+
+		if ( $config{ENABLE_SWAIG} ) {
+			my $output;
+
+			my $sql = "SELECT * FROM ai_function WHERE agent_id = ? ORDER BY created DESC";
+
+			my $sth = $dbh->prepare( $sql );
+
+			$sth->execute( $agent ) or die $DBI::errstr;
+
+			my @functions;
+
+			while ( my $row = $sth->fetchrow_hashref ) {
+				my @args;
+				my $argcount = 0;
+				my @required;
+
+				if ( $row->{code} ) {
+				my $arguments;
+
+				$arguments->{type} = "object";
+
+				my $argsql = "SELECT * FROM ai_function_argument WHERE function_id = ? AND agent_id = ? ORDER BY created DESC";
+
+				my $argsth = $dbh->prepare( $argsql );
+
+				$argsth->execute( $row->{id}, $agent ) or die $DBI::errstr;
+
+				while ( my $arg = $argsth->fetchrow_hashref ) {
+					next if $arg->{active} == 0;
+					$argcount++;
+					$arguments->{properties}->{$arg->{name}} = { type => $arg->{type}, description => $arg->{description} };
+					push @required, $arg->{name} if $arg->{required};
+				}
+
+				$arguments->{required} = \@required if scalar @required > 0;
+
+				$argsth->finish;
+
+				if  ( $argcount > 0 ) {
+					broadcast_by_agent_id( $agent, "Adding function $row->{name}" );
+
+					$swml->add_aiswaigfunction({
+						active	 => $row->{active} ? 'true' : 'false',
+						function => $row->{name},
+						purpose	 => $row->{purpose},
+						argument => $arguments });
+					} else {
+						broadcast_by_agent_id( $agent, "Skipping function $row->{name}, no arguments defined." );
+					}
+				}
+			}
+
+
+			if ( $config{ENABLE_STEPS} ) {
+				my $sql = "SELECT * FROM ai_steps WHERE agent_id = ? ORDER BY context, step_order ASC";
+
+				my $sth = $dbh->prepare( $sql );
+
+
+				$sth->execute( $agent ) or die $DBI::errstr;
+
+
+				while ( my $row = $sth->fetchrow_hashref ) {
+					$swml->add_context_steps($row->{context}, [
+							{
+								( $row->{step_name}		 	 ? ( name => $row->{step_name} ) : () ),
+								( $row->{functions}		 	 ? ( functions => $row->{functions} ) : () ),
+								( $row->{step_criteria}		 ? ( step_criteria => $row->{step_criteria} ) : () ),
+								( $row->{valid_steps}		 ? ( valid_steps => [split(/,\s*/, $row->{valid_steps})] ) : () ),
+								( $row->{end}			 	 ? ( end => 'true' ) : () ),
+								( $row->{text}			 	 ? ( text => $row->{text} ) : () ),
+								( $row->{skip_user_turn}	 ? ( skip_user_turn => 'true'  ) : () ),
+								( $row->{valid_contexts}	 ? ( valid_contexts => [split(/,\s*/, $row->{valid_contexts})] ) : () ),
+								( $row->{full_reset}		 ? ( full_reset => 'true' ) : () ),
+								( $row->{consolidate}		 ? ( consolidate => 'true' ) : () ),
+								( $row->{system_prompt}		 ? ( system_prompt => $row->{system_prompt} ) : () ),
+								( $row->{user_prompt}		 ? ( user_prompt => $row->{user_prompt} ) : () ),
+							}
+							]);
+				}
+			}
+
+			if ( $config{ENABLE_SLACK_SWAIG} && $config{SLACK_WEBHOOK_URL} && $config{SLACK_CHANNEL} && $config{SLACK_USERNAME} && $config{SLACK_MESSAGE} ) {
+				broadcast_by_agent_id( $agent, "Adding slack notification function" );
+				$swml->add_aiswaigfunction({
+				function => 'send_slack_notification',
+				purpose => "send a slack notification with the conversation details",
+				argument => {
+					type => "object",
+					properties => {
+						name => {
+						type	    => "string",
+						description => "Users name" },
+						company => {
+						type	    => "string",
+						description => "Company name, optional" },
+						contactNumber => {
+						type	    => "string",
+						description => "User phone number in e.164 format, required" },
+						description => {
+						type	    => "string",
+						description => "the summary of the conversation, required" } } },
+				data_map => {
+					webhooks => [{
+						url => $config{SLACK_WEBHOOK_URL},
+						form_param => 'payload',
+						method	   => "POST",
+						params	   => {
+						text	 => $config{SLACK_MESSAGE},
+						channel	 => $config{SLACK_CHANNEL},
+						username => $config{SLACK_USERNAME},
+						},
+						output => {
+						response => 'slack notification sent',
+						}}]}});
+		}
 
 	    if ( $config{TRANSFER_TABLE} && $config{ENABLE_TRANSFER} ) {
-		broadcast_by_agent_id( $agent, "Adding transfer function" );
-		my $transfer = SignalWire::ML->new;
+			broadcast_by_agent_id( $agent, "Adding transfer function" );
+			my $transfer = SignalWire::ML->new;
 
-		$transfer->add_application( "main", "connect" => { to   => '${meta_data.table.${lc:args.target}}',
+			$transfer->add_application( "main", "connect" => { to	=> '${meta_data.table.${lc:args.target}}',
 								   from => $assistant } );
 
-		$output = $transfer->swaig_response( {
-		    post_process => 'true',
-		    response => "Tell the user you are going to transfer the call. Do not change languages from the one you are currently using. Do not hangup.",       
-		    action => [ { SWML => $transfer->render, transfer => 'true' } ] } );   
+			$output = $transfer->swaig_response( {
+			post_process => 'true',
+				response => "Tell the user you are going to transfer the call to whoever they asked for. Do not change languages from the one you are currently using. Do not hangup.",
+				action => [ { SWML => $transfer->render, transfer => 'true' } ] } );
 
+			my %hash;
 
-		my %hash;
+			my @pairs = split( /\|/, $config{TRANSFER_TABLE} );
 
-		my @pairs = split( /\|/, $config{TRANSFER_TABLE} );
+			foreach my $pair ( @pairs ) {
+				my ( $key, $value ) = split( /:/, $pair, 2 );
+				$hash{$key} = $value;
+			}
 
-		foreach my $pair ( @pairs ) {
-		    my ( $key, $value ) = split( /:/, $pair, 2 );
-		    $hash{$key} = $value;
+			$swml->add_aiswaigfunction( {
+				function  => 'transfer',
+				( $config{ENABLE_TRANSFER_INACTIVE} ? ( active => 'false' ) : ()),
+				purpose	  => "use to transfer to a target",
+				meta_data => {
+				table => \%hash
+				},
+				argument => {
+				type => "object",
+				properties => {
+					target => {
+					type	    => "string",
+					description => "the target to transfer to"
+					}
+				},
+				required => [ "target" ]
+				},
+				data_map => {
+				expressions => [
+					{
+					string	=> '${meta_data.table.${lc:args.target}}',
+					pattern => '\w+',
+					output	=> $output
+					},
+					{
+					string	=> '${args.target}',
+					pattern => '.*',
+					output	=> { response => 'I\'m sorry, I was unable to transfer your call to ${input.args.target}.' }
+					}
+					]}});
+
 		}
 
-		$swml->add_aiswaigfunction( {
-		    function  => 'transfer',
-		    ( $config{ENABLE_TRANSFER_INACTIVE} ? ( active => 'false' ) : ()),
-		    purpose   => "use to transfer to a target",
-		    meta_data => {
-			table => \%hash
-		    },
-		    argument => {
-			type => "object",
-			properties => {
-			    target => {
-				type        => "string",
-				description => "the target to transfer to"
-			    }
-			}
-		    },
-		    data_map => {
-			expressions => [
-			    {
-				string  => '${meta_data.table.${lc:args.target}}',
-				pattern => '\w+',
-				output  => $output
-			    },
-			    {
-				string  => '${args.target}',
-				pattern => '.*',
-				output  => { response => 'I\'m sorry, I was unable to transfer your call to ${input.args.target}.' }
-			    }
-			    ]}});
-
-	    }
-
 	    if ( $config{ENABLE_MESSAGE} && $assistant ) {
-		broadcast_by_agent_id( $agent, "Adding message function" );
-		my $msg = SignalWire::ML->new;
+			broadcast_by_agent_id( $agent, "Adding message function" );
+			my $msg = SignalWire::ML->new;
 
-		$msg->add_application( "main", "send_sms" => { to_number   => '${args.to}',
+			$msg->add_application( "main", "send_sms" => { to_number   => '${args.to}',
 							       from_number => "$assistant",
-							       body        => '${args.message}, Reply STOP to stop.' } );
+							       body	   => '${args.message}, Reply STOP to stop.' } );
 
-		$output = $msg->swaig_response( {
-		    response => "Message sent.",
-		    action   => [ { SWML => $msg->render } ] } );
+			$output = $msg->swaig_response( {
+			response => "Message sent.",
+			action	 => [ { SWML => $msg->render } ] } );
 
 		$swml->add_aiswaigfunction( {
 		    function => 'send_message',
@@ -1722,10 +1694,10 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    message => {
-				type        => "string",
+				type	    => "string",
 				description => "the message to send to the user" },
 			    to => {
-				type        => "string",
+				type	    => "string",
 				description => "The users number in e.164 format" }
 			},
 			required => [ "message", "to" ]
@@ -1744,8 +1716,8 @@ my $swml_app = sub {
 
 		$msg->add_application( "main", "send_sms" => { to_number   => '${args.to}',
 							       from_number => "$assistant",
-							       body        => '${args.message}, Reply STOP to stop.',
-							       media       => [ '${args.media}' ] } );
+							       body	   => '${args.message}, Reply STOP to stop.',
+							       media	   => [ '${args.media}' ] } );
 
 		$output = $msg->swaig_response( {
 		    response => "Message sent.",
@@ -1758,13 +1730,13 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    media   => {
-				type        => "string",
+				type	    => "string",
 				description => "the media URL to send to the user" },
 			    message => {
-				type        => "string",
+				type	    => "string",
 				description => "the message to send to the user" },
 			    to => {
-				type        => "string",
+				type	    => "string",
 				description => "The users number in e.164 format" }
 			},
 		    },
@@ -1794,7 +1766,7 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    button => {
-				type        => "string",
+				type	    => "string",
 				description => "The button to press." },
 			},
 		    },
@@ -1810,10 +1782,10 @@ my $swml_app = sub {
 		broadcast_by_agent_id( $agent, "Adding calendly function" );
 		my $cal = SignalWire::ML->new;
 
-		$cal->add_application("main", "send_sms" => { to_number   => '${args.to}',
+		$cal->add_application("main", "send_sms" => { to_number	  => '${args.to}',
 							      from_number => $assistant,
-							      body        => $config{CALENDLY_MESSAGE},
-							      region      => "us" } );
+							      body	  => $config{CALENDLY_MESSAGE},
+							      region	  => "us" } );
 
 		$output = $cal->swaig_response( {
 		    response => "Message sent.",
@@ -1826,7 +1798,7 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    to => {
-				type        => "string",
+				type	    => "string",
 				description => "The users number in e.164 format" }
 			},
 		    },
@@ -1847,14 +1819,14 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    name => {
-				type        => "string",
+				type	    => "string",
 				description => "Users name." },
 			    surname => {
-				type        => "string",
+				type	    => "string",
 				description => "Users Surname" } } },
 		    data_map => {
 			webhooks => [{
-			    url     => "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/debughook?agent_id=$agent",
+			    url	    => "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/debughook?agent_id=$agent",
 			    method  => "POST",
 			    params   => {
 				name => '${args.name}',
@@ -1868,7 +1840,7 @@ my $swml_app = sub {
 	    if ( $config{AI_ROOMIESERVE_URL} ) {
 		broadcast_by_agent_id( $agent, "Adding AI Roomieserve includes" );
 		if ( $config{AI_ROOMIESERVE_URL} =~ m|https:\/\/([^:]+):([^@]+)@([^/]+)(/[^?#]*)?|) {
-		    $swml->add_aiinclude( { url  => $config{AI_ROOMIESERVE_URL} } );
+		    $swml->add_aiinclude( { url	 => $config{AI_ROOMIESERVE_URL} } );
 		} else {
 		    broadcast_by_agent_id( $agent, "AI Roomieserve URL is not valid" );
 		}
@@ -1884,9 +1856,8 @@ my $swml_app = sub {
 
 		    $swml->add_aiinclude( {
 			functions => [ 'append' ],
-			url  => $config{AI_SHEETS_URL},
-			user => $username,
-			pass => $password } );
+			url  => $config{AI_SHEETS_URL}
+					  } );
 		} else {
 		    broadcast_by_agent_id( $agent, "AI Sheets URL is not valid" );
 		}
@@ -1903,8 +1874,6 @@ my $swml_app = sub {
 		    $swml->add_aiinclude( {
 			functions => [ 'freebusy', 'events' ],
 			url  => $config{AI_CALENDAR_URL},
-#			user => $username,
-#			pass => $password
 					  } );
 		} else {
 		    broadcast_by_agent_id( $agent, "AI Calendar URL is not valid" );
@@ -1955,18 +1924,17 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    city => {
-				type        => "string",
+				type	    => "string",
 				description => "City name" },
 			    state => {
-				type        => "string",
+				type	    => "string",
 				description => "Two letter US state code" } } },
 		    data_map => {
 			webhooks => [{
-			    url     => 'https://nominatim.openstreetmap.org/search?format=json&q=${enc:args.city}%2C${enc:args.state}',
+			    url	    => 'https://nominatim.openstreetmap.org/search?format=json&q=${enc:args.city}%2C${enc:args.state}',
 			    method  => "GET",
 			    output => {
 				response => 'The lattitude is ${array[0].lat}, longitude is ${array[0].lon} for ${input.args.city}, ${input.args.state}',
-				action  => [ { back_to_back_functions => 'true' } ],
 			    }}]}} );
 	    }
 	    if ( $config{ENABLE_WEATHER_GOV} ) {
@@ -1977,18 +1945,17 @@ my $swml_app = sub {
 			    type => "object",
 			    properties => {
 				lat => {
-				    type        => "string",
+				    type	=> "string",
 				    description => "Lattitude to four decimal places." },
 				lon => {
-				    type        => "string",
+				    type	=> "string",
 				    description => "Longitude to four decimal places." } } },
 			data_map => {
 			    webhooks => [{
-				url     => 'https://api.weather.gov/points/${enc:args.lat},${enc:args.lon}',
-				method  => "GET",
-				output  => {
+				url	=> 'https://api.weather.gov/points/${enc:args.lat},${enc:args.lon}',
+				method	=> "GET",
+				output	=> {
 				    response => 'Now use get_weather_detailed_forecast function to get the forecast using this URL ${properties.forecast} as the argument.',
-				    action  => [ { back_to_back_functions => 'true' } ],
 				}}]}} );
 
 		$swml->add_aiswaigfunction( {
@@ -1998,11 +1965,11 @@ my $swml_app = sub {
 			type => "object",
 			properties => {
 			    url => {
-				type        => "string",
+				type	    => "string",
 				description => "complete forcast URL" } } },
 		    data_map => {
 			webhooks => [{
-			    url     => '${args.url}',
+			    url	    => '${args.url}',
 			    method  => "GET",
 			    output  => {
 				response => '${properties.periods[0].detailedForecast}'
@@ -2029,12 +1996,12 @@ my $swml_app = sub {
 			    },
 			    data_map => {
 				webhooks => [{
-				    url        => "https://addressvalidation.googleapis.com/v1:validateAddress?key=$config{GOOGLE_API_KEY}",
+				    url	       => "https://addressvalidation.googleapis.com/v1:validateAddress?key=$config{GOOGLE_API_KEY}",
 				    method     => "POST",
 				    error_keys => 'error',
 				    params     => {
 					address => {
-					    regionCode   => 'US',
+					    regionCode	 => 'US',
 					    addressLines => ['${args.address}', '${args.city}, ${args.state}']
 					},
 					enableUspsCass => 'true',
@@ -2055,15 +2022,15 @@ my $swml_app = sub {
 			    type => "object",
 			    properties => {
 				city => {
-				    type        => "string",
+				    type	=> "string",
 				    description => "City name." },
 				state => {
-				    type        => "string",
+				    type	=> "string",
 				    description => "US state for United States cities only. Optional" } } },
 			data_map => {
 			    webhooks => [{
-				url     => 'https://api.api-ninjas.com/v1/weather?city=${enc:args.city}&state=${enc:args.state}',
-				method  => "GET",
+				url	=> 'https://api.api-ninjas.com/v1/weather?city=${enc:args.city}&state=${enc:args.state}',
+				method	=> "GET",
 				headers => {
 				    "X-Api-Key" => "$config{API_NINJAS_KEY}" },
 				output => {
@@ -2076,19 +2043,19 @@ my $swml_app = sub {
 		    broadcast_by_agent_id( $agent, "Adding jokes function" );
 		    $swml->add_aiswaigfunction( {
 			function => 'get_joke',
-			purpose  => "tell a joke",
+			purpose	 => "tell a joke",
 			argument => {
 			    type => "object",
 			    properties => {
 				type => {
-				    type        => "string",
+				    type	=> "string",
 				    description => "must either be 'jokes' or 'dadjokes'" },
 			    }
 			},
 			data_map => {
 			    webhooks => [{
-				url     => 'https://api.api-ninjas.com/v1/${args.type}',
-				method  => "GET",
+				url	=> 'https://api.api-ninjas.com/v1/${args.type}',
+				method	=> "GET",
 				headers => {
 				    "X-Api-Key" => "$config{API_NINJAS_KEY}" },
 				output => {
@@ -2101,26 +2068,26 @@ my $swml_app = sub {
 
 		    my $djoke  = $dj->swaig_response({
 			response => 'Tell the user: ${joke}',
-			action   => [ { SWML => $dj->render } ] } );
+			action	 => [ { SWML => $dj->render } ] } );
 		}
 
 		if ( $config{ENABLE_TRIVIA} ) {
 		    broadcast_by_agent_id( $agent, "Adding trivia function" );
 		    $swml->add_aiswaigfunction( {
 			function => 'get_trivia',
-			purpose  => "get a trivia question",
+			purpose	 => "get a trivia question",
 			argument => {
 			    type => "object",
 			    properties => {
 				category => {
-				    type        => "string",
+				    type	=> "string",
 				    description => "Valid options are artliterature, language, sciencenature, general, fooddrink, peopleplaces, geography, historyholidays, entertainment, toysgames, music, mathematics, religionmythology, sportsleisure. Pick a category at random if not asked for a specific category." }
 			    }
 			},
 			data_map => {
 			    webhooks => [{
-				url     => 'https://api.api-ninjas.com/v1/trivia?category=${args.category}',
-				method  => "GET",
+				url	=> 'https://api.api-ninjas.com/v1/trivia?category=${args.category}',
+				method	=> "GET",
 				headers => {
 				    "X-Api-Key" => "$config{API_NINJAS_KEY}" },
 				output => {
@@ -2146,23 +2113,28 @@ my $swml_app = sub {
 
     my $res = Plack::Response->new( 200 );
 
-    $res->content_type( 'application/json' );
-
     broadcast_by_agent_id( $agent, $swml->render );
-
+	print STDERR Dumper($swml->render);		
     $dbh->disconnect;
-
-    $res->body( $swml->render_json );
+	if ( $format eq 'json' ) {
+		$res->content_type( 'application/json' );
+		$res->header('Content-Disposition' => 'inline');
+	    $res->body( $swml->render_json );
+	} elsif ( $format eq 'yaml' ) {
+		$res->content_type( 'text/x-yaml' );
+		$res->header('Content-Disposition' => 'inline');
+	    $res->body( $swml->render_yaml );
+	}
 
     return $res->finalize;
 };
 
 my $swaig_app = sub {
-    my $env       = shift;
-    my $req       = Plack::Request->new( $env );
-    my $agent     = $req->param('agent_id');
-    my $swml      = SignalWire::ML->new;
-    my $res       = Plack::Response->new( 200 );
+    my $env	  = shift;
+    my $req	  = Plack::Request->new( $env );
+    my $agent	  = $req->param('agent_id');
+    my $swml	  = SignalWire::ML->new;
+    my $res	  = Plack::Response->new( 200 );
     my $post_data;
 
     if ( $req->raw_body ne '' ) {
@@ -2197,7 +2169,7 @@ my $swaig_app = sub {
 	}
 
 	if ( defined $row->{name} && $row->{active} ) {
-	    my $code     = $row->{code};
+	    my $code	 = $row->{code};
 	    my $code_ref = eval "sub { $code }";
 
 	    if ( $@ ) {
@@ -2229,9 +2201,9 @@ sub config {
     my $res    = Plack::Response->new( 200 );
     my $params = $req->parameters;
 
-    my @toggles = qw( ENABLE_DENOISE ENABLE_GOOGLE_ADDRESS_VALIDATION ENABLE_WEATHER_GOV ENABLE_OPENSTREET_MAP ENABLE_SEND_DIGITS_ON_ANSWER ENABLE_ANSWER_DELAY ENABLE_SEND_DIGITS ENABLE_BYPASS ENABLE_ZENDESK_TICKET ENABLE_CONTEXTS ENABLE_STEPS ENABLE_SLACK_NOTIFICATION ENABLE_CALENDLY ENABLE_SLACK_SWAIG ENABLE_PRONOUNCE ENABLE_TRANSFER ENABLE_TRANSFER_INACTIVE ENABLE_DEBUG_WEBHOOK ENABLE_POST_PROMPT ENABLE_CNAM ENABLE_SWAIG ENABLE_RECORD ENABLE_MESSAGE ENABLE_MESSAGE_INACTIVE ENABLE_MMS_MESSAGE ENABLE_WEATHER ENABLE_TRIVIA ENABLE_JOKES ENABLE_CHECK_FOR_INPUT SAVE_BLANK_CONVERSATIONS SEND_SUMMARY_MESSAGE SIMPLE_POST_FUNCTION SET_CONVERSATION_ID);
+    my @toggles = qw( ENABLE_DENOISE ENABLE_GOOGLE_ADDRESS_VALIDATION ENABLE_WEATHER_GOV ENABLE_OPENSTREET_MAP ENABLE_SEND_DIGITS_ON_ANSWER ENABLE_ANSWER_DELAY ENABLE_SEND_DIGITS ENABLE_BYPASS ENABLE_ZENDESK_TICKET ENABLE_STEPS ENABLE_SLACK_NOTIFICATION ENABLE_CALENDLY ENABLE_SLACK_SWAIG ENABLE_PRONOUNCE ENABLE_TRANSFER ENABLE_TRANSFER_INACTIVE ENABLE_DEBUG_WEBHOOK ENABLE_POST_PROMPT ENABLE_CNAM ENABLE_SWAIG ENABLE_RECORD ENABLE_MESSAGE ENABLE_MESSAGE_INACTIVE ENABLE_MMS_MESSAGE ENABLE_WEATHER ENABLE_TRIVIA ENABLE_JOKES ENABLE_CHECK_FOR_INPUT SAVE_BLANK_CONVERSATIONS SEND_SUMMARY_MESSAGE SIMPLE_POST_FUNCTION SET_CONVERSATION_ID ENABLE_AMR_WB);
 
-    my @fields  = qw(GOOGLE_API_KEY AUTH_USERNAME AUTH_PASSWORD SPACE_NAME ACCOUNT_SID AUTH_TOKEN API_VERSION TEMPERATURE TOP_P BARGE_CONFIDENCE CONFIDENCE PRESENCE_PENALTY FREQUENCY_PENALTY CUSTODIAN_SMS CUSTODIAN_CELL ASSISTANT TRANSFER_TABLE CALENDLY_MESSAGE API_NINJAS_KEY AI_CONTACTS_URL AI_EMAIL_URL AI_CALENDAR_URL AI_SHEETS_URL AI_ROOMIESERVE_URL MAX_TOKENS SLACK_WEBHOOK_URL SLACK_CHANNEL SLACK_USERNAME SLACK_MESSAGE ZENDESK_API_KEY ZENDESK_SUBDOMAIN BYPASS_SOURCES ANSWER_DELAY_LENGTH SEND_DIGITS_ON_ANSWER );
+    my @fields	= qw(GOOGLE_API_KEY AUTH_USERNAME AUTH_PASSWORD SPACE_NAME ACCOUNT_SID AUTH_TOKEN API_VERSION TEMPERATURE TOP_P BARGE_CONFIDENCE CONFIDENCE PRESENCE_PENALTY FREQUENCY_PENALTY CUSTODIAN_SMS CUSTODIAN_CELL ASSISTANT TRANSFER_TABLE CALENDLY_MESSAGE API_NINJAS_KEY AI_CONTACTS_URL AI_EMAIL_URL AI_CALENDAR_URL AI_SHEETS_URL AI_ROOMIESERVE_URL MAX_TOKENS SLACK_WEBHOOK_URL SLACK_CHANNEL SLACK_USERNAME SLACK_MESSAGE ZENDESK_API_KEY ZENDESK_SUBDOMAIN BYPASS_SOURCES ANSWER_DELAY_LENGTH SEND_DIGITS_ON_ANSWER STATIC_GREETING );
 
     my ( @controls, @settings );
 
@@ -2250,15 +2222,15 @@ sub config {
     my %config;
 
     tie %config, 'MyTieConfig',
-	host     => $host,
-	port     => $port,
-	dbname   => $database,
-	user     => $dbusername,
+	host	 => $host,
+	port	 => $port,
+	dbname	 => $database,
+	user	 => $dbusername,
 	password => $dbpassword,
-	table    => 'ai_config',
+	table	 => 'ai_config',
 	agent_id => $agent;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' && check_role( $session ,'admin_update,update_config' ) ) {
 
@@ -2300,19 +2272,19 @@ sub config {
 
 	    $template->param(
 		nav	 => @nav,
-		nonce    => $env->{'plack.nonce'},
+		nonce	 => $env->{'plack.nonce'},
 		agent_id => $agent,
 		controls => \@controls,
-		fields   => \@settings,
+		fields	 => \@settings,
 		is_admin => $session->{is_admin},
-		url      => "https://$env->{HTTP_HOST}/config",
+		url	 => "https://$env->{HTTP_HOST}/config",
 		swml_url => ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) ? "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/swml?agent_id=$agent" : "https://$env->{HTTP_HOST}/swml?agent_id=$agent",
 		laml_url => ( $config{AUTH_USERNAME} && $config{AUTH_PASSWORD} ) ? "https://$config{AUTH_USERNAME}:$config{AUTH_PASSWORD}\@$env->{HTTP_HOST}/laml?agent_id=$agent" : "https://$env->{HTTP_HOST}/laml?agent_id=$agent"
 		);
 
 	    untie %config;
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} else {
@@ -2322,7 +2294,7 @@ sub config {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    return $res->finalize;
 	}
@@ -2345,60 +2317,62 @@ sub prompt {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	if ( check_role( $session ,'admin_update,update_prompt' ) ) {
-	    my $sql = "INSERT INTO ai_prompt (agent_id, prompt, post_prompt) VALUES (?, ?, ?) ON CONFLICT (agent_id) DO UPDATE SET prompt = EXCLUDED.prompt, post_prompt = EXCLUDED.post_prompt";
-	    
+	    my $sql = "INSERT INTO ai_prompt (agent_id, prompt, post_prompt, outbound_prompt, outbound_post_prompt) VALUES (?, ?, ?, ?, ?) ON CONFLICT (agent_id) DO UPDATE SET prompt = EXCLUDED.prompt, post_prompt = EXCLUDED.post_prompt, outbound_prompt = EXCLUDED.outbound_prompt, outbound_post_prompt = EXCLUDED.outbound_post_prompt";
+
 	    my $sth = $dbh->prepare( $sql );
-	    
-	    $sth->execute( $agent, $params->{prompt}, $params->{post_prompt} ) or die $DBI::errstr;
-	    
+
+	    $sth->execute( $agent, $params->{prompt}, $params->{post_prompt}, $params->{outbound_prompt}, $params->{outbound_post_prompt} ) or die $DBI::errstr;
+
 	    $sth->finish;
-	    
+
 	    $dbh->disconnect;
-	    
+
 	    my $res = Plack::Response->new( 200 );
-	    
+
 	    $res->redirect( "/prompt?agent_id=$agent" );
-	    
+
 	    return $res->finalize;
 	} else {
 	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
-	    
+
 	    $template->param(message => "You do not have permission to access this resource");
-	    
+
 	    $res->status(403);
-	    
-	    $res->body($template->output);
-	    
+
+	    $res->body(encode('UTF-8', $template->output ));
+
 	    return $res->finalize;
 	}
     } else {
 	if ( check_role( $session ,'admin_view,view_prompt' ) ) {
-	    my $sql = 'SELECT prompt,post_prompt FROM ai_prompt WHERE agent_id = ?';
-	    
+	    my $sql = 'SELECT * FROM ai_prompt WHERE agent_id = ?';
+
 	    my $sth = $dbh->prepare($sql);
-	    
+
 	    $sth->execute($agent) or die $DBI::errstr;
-	    
+
 	    my $row = $sth->fetchrow_hashref();
 	    print STDERR Dumper($row);
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/prompt.tmpl", die_on_bad_params => 0 );
-	    
+
 	    $template->param(
 		nav		=> @nav,
-		nonce           => $env->{'plack.nonce'},
-		agent_id        => $agent,
-		prompt          => $row->{prompt},
-		post_prompt     => $row->{post_prompt}
+		nonce		=> $env->{'plack.nonce'},
+		agent_id	=> $agent,
+		prompt		=> $row->{prompt},
+		post_prompt	=> $row->{post_prompt},
+		outbound_prompt	     => $row->{outbound_prompt},
+		outbound_post_prompt => $row->{outbound_post_prompt}
 		);
-	    
-	    $res->body( $template->output );
-	    
+
+	    $res->body( encode('UTF-8', $template->output ) );
+
 	    $sth->finish;
-	    
+
 	    $dbh->disconnect;
 
 	    return $res->finalize;
@@ -2409,7 +2383,7 @@ sub prompt {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    return $res->finalize;
 	}
@@ -2431,7 +2405,7 @@ sub agents {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_agents' ) ) {
@@ -2448,12 +2422,12 @@ sub agents {
 	    my %config;
 
 	    tie %config, 'MyTieConfig',
-		host     => $host,
-		port     => $port,
-		dbname   => $database,
-		user     => $dbusername,
+		host	 => $host,
+		port	 => $port,
+		dbname	 => $database,
+		user	 => $dbusername,
 		password => $dbpassword,
-		table    => 'ai_config',
+		table	 => 'ai_config',
 		agent_id => $last_insert_id;
 
 	    my $username = substr(generate_nonce(), 0, 16);
@@ -2471,11 +2445,11 @@ sub agents {
 
 	    $template->param(
 		nav		=> $session->{is_admin} ? @admin_nav : @user_nav,
-		url             => "https://$env->{HTTP_HOST}",
-		nonce           => $env->{'plack.nonce'},
+		url		=> "https://$env->{HTTP_HOST}",
+		nonce		=> $env->{'plack.nonce'},
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2495,20 +2469,20 @@ sub agents {
 
 	    $template->param(
 		nav		=> $session->{is_admin} ? @admin_nav : @user_nav,
-		url             => "https://$env->{HTTP_HOST}",
-		nonce           => $env->{'plack.nonce'},
-		agent_id        => $params->{id},
+		url		=> "https://$env->{HTTP_HOST}",
+		nonce		=> $env->{'plack.nonce'},
+		agent_id	=> $params->{id},
 		);
 
 	    $template->param( %$agent );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
 	    return $res->finalize;
 	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_agents' ) ) {
-	    my $sql = "UPDATE ai_agent SET name = ?, description = ?, phone_number = ?  WHERE id = ?";
+	    my $sql = "UPDATE ai_agent SET name = ?, description = ?, phone_number = ?	WHERE id = ?";
 	    my $sth = $dbh->prepare( $sql );
 
 	    $sth->execute( $params->{name}, $params->{description}, $params->{phone_number}, $params->{id} ) or die $DBI::errstr;
@@ -2562,14 +2536,14 @@ sub agents {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/agents.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @admin_nav : @user_nav,
+		nav		=> $session->{is_admin} ? @admin_nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		url             => "https://$env->{HTTP_HOST}",
-		agents          => $agents,
+		url		=> "https://$env->{HTTP_HOST}",
+		agents		=> $agents,
 		is_admin	=> $session->{is_admin},
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2581,7 +2555,7 @@ sub agents {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    $dbh->disconnect;
 
@@ -2591,14 +2565,14 @@ sub agents {
 }
 
 sub hints {
-    my $env        = shift;
-    my $req        = Plack::Request->new( $env );
-    my $agent      = $req->param( 'agent_id' );
+    my $env	   = shift;
+    my $req	   = Plack::Request->new( $env );
+    my $agent	   = $req->param( 'agent_id' );
     my $agent_name = $req->param( 'agent_name' );
-    my $method     = $req->method;
-    my $res        = Plack::Response->new( 200 );
-    my $params     = $req->parameters;
-    my $session    = $env->{'psgix.session'};
+    my $method	   = $req->method;
+    my $res	   = Plack::Response->new( 200 );
+    my $params	   = $req->parameters;
+    my $session	   = $env->{'psgix.session'};
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -2606,7 +2580,7 @@ sub hints {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_hints' ) ) {
@@ -2620,12 +2594,12 @@ sub hints {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_hint.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nonce           => $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name
+		nonce		=> $env->{'plack.nonce'},
+		agent_id	=> $agent,
+		agent_name	=> $agent_name
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2644,14 +2618,14 @@ sub hints {
 	    $sth->finish;
 
 	    $template->param(
-		nonce           => $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name
+		nonce		=> $env->{'plack.nonce'},
+		agent_id	=> $agent,
+		agent_name	=> $agent_name
 		);
 
 	    $template->param( %$hint );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2663,7 +2637,7 @@ sub hints {
 	    $sth->execute( $params->{hint}, $params->{id} ) or die $DBI::errstr;
 
 	    $sth->finish;
-	} elsif ( $params->{action} eq 'delete'  && check_role( $session, 'admin_delete,delete_hints' ) ) {
+	} elsif ( $params->{action} eq 'delete'	 && check_role( $session, 'admin_delete,delete_hints' ) ) {
 	    my $sql = "DELETE FROM ai_hints WHERE id = ?";
 	    my $sth = $dbh->prepare( $sql );
 
@@ -2691,13 +2665,13 @@ sub hints {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/hints.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nonce           => $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name,
-		hints           => $hints
+		nonce		=> $env->{'plack.nonce'},
+		agent_id	=> $agent,
+		agent_name	=> $agent_name,
+		hints		=> $hints
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2709,7 +2683,7 @@ sub hints {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    $dbh->disconnect;
 
@@ -2719,14 +2693,14 @@ sub hints {
 }
 
 sub language {
-    my $env        = shift;
-    my $req        = Plack::Request->new( $env );
-    my $agent      = $req->param( 'agent_id' );
+    my $env	   = shift;
+    my $req	   = Plack::Request->new( $env );
+    my $agent	   = $req->param( 'agent_id' );
     my $agent_name = $req->param( 'agent_name' );
-    my $method     = $req->method;
-    my $res        = Plack::Response->new( 200 );
-    my $params     = $req->parameters;
-    my $session    = $env->{'psgix.session'};
+    my $method	   = $req->method;
+    my $res	   = Plack::Response->new( 200 );
+    my $params	   = $req->parameters;
+    my $session	   = $env->{'psgix.session'};
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -2734,7 +2708,7 @@ sub language {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_languages' ) ) {
@@ -2749,13 +2723,13 @@ sub language {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_language.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @nav : @user_nav,
+		nav		=> $session->{is_admin} ? @nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name
+		agent_id	=> $agent,
+		agent_name	=> $agent_name
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2773,16 +2747,16 @@ sub language {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_language.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @nav : @user_nav,
+		nav		=> $session->{is_admin} ? @nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		url             => "https://$env->{HTTP_HOST}",
-		agent_id        => $agent,
-		agent_name      => $agent_name,
+		url		=> "https://$env->{HTTP_HOST}",
+		agent_id	=> $agent,
+		agent_name	=> $agent_name,
 		);
 
 	    $template->param( %$language );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} elsif ( $params->{action} eq 'update' && check_role( $session, 'admin_update,update_languages' ) ) {
@@ -2820,15 +2794,15 @@ sub language {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/language.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @nav : @user_nav,
+		nav		=> $session->{is_admin} ? @nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		url             => "https://$env->{HTTP_HOST}",
-		agent_id        => $agent,
-		agent_name      => $agent_name,
-		languages       => $languages
+		url		=> "https://$env->{HTTP_HOST}",
+		agent_id	=> $agent,
+		agent_name	=> $agent_name,
+		languages	=> $languages
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2840,7 +2814,7 @@ sub language {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    $dbh->disconnect;
 
@@ -2850,14 +2824,14 @@ sub language {
 }
 
 sub pronounce {
-    my $env        = shift;
-    my $req        = Plack::Request->new( $env );
-    my $agent      = $req->param( 'agent_id' );
+    my $env	   = shift;
+    my $req	   = Plack::Request->new( $env );
+    my $agent	   = $req->param( 'agent_id' );
     my $agent_name = $req->param( 'agent_name' );
-    my $method     = $req->method;
-    my $res        = Plack::Response->new( 200 );
-    my $params     = $req->parameters;
-    my $session    = $env->{'psgix.session'};
+    my $method	   = $req->method;
+    my $res	   = Plack::Response->new( 200 );
+    my $params	   = $req->parameters;
+    my $session	   = $env->{'psgix.session'};
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -2865,7 +2839,7 @@ sub pronounce {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	$params->{ignore_case} = $params->{ignore_case} ? 1 : 0;
@@ -2882,13 +2856,13 @@ sub pronounce {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_pronounce.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @nav : @user_nav,
+		nav		=> $session->{is_admin} ? @nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name
+		agent_id	=> $agent,
+		agent_name	=> $agent_name
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2909,15 +2883,15 @@ sub pronounce {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_pronounce.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @nav : @user_nav,
+		nav		=> $session->{is_admin} ? @nav : @user_nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name
+		agent_id	=> $agent,
+		agent_name	=> $agent_name
 		);
 
 	    $template->param( %$pronounce );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} elsif ( $params->{action} eq 'update' && check_role( $session, 'admin_update,update_pronounce' ) ) {
@@ -2961,14 +2935,14 @@ sub pronounce {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/pronounce.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
-		agent_name      => $agent_name,
-		pronounce       => $pronounce
+		agent_id	=> $agent,
+		agent_name	=> $agent_name,
+		pronounce	=> $pronounce
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -2980,7 +2954,7 @@ sub pronounce {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    $dbh->disconnect;
 
@@ -3006,7 +2980,7 @@ sub function {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     $params->{active_checked} = $params->{active} ? 'checked' : '';
 
@@ -3032,12 +3006,12 @@ sub function {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_function.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
+		agent_id	=> $agent,
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3056,21 +3030,21 @@ sub function {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_function.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
+		agent_id	=> $agent,
 		);
 
 	    $function->{active_checked} = $function->{active} ? 'checked' : '';
 
 	    $template->param( %$function );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update'  && check_role( $session, 'admin_update,update_functions' ) ) {
+	} elsif ( $params->{action} eq 'update'	 && check_role( $session, 'admin_update,update_functions' ) ) {
 	    my $sql = "UPDATE ai_function SET name = ?, active = ?, purpose = ?, code = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3086,7 +3060,7 @@ sub function {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete'  && check_role( $session, 'admin_delete,delete_function' )) {
+	} elsif ( $params->{action} eq 'delete'	 && check_role( $session, 'admin_delete,delete_function' )) {
 	    my $sql = "DELETE FROM ai_function WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3118,13 +3092,13 @@ sub function {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/function.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav       => @nav,
+		nav	  => @nav,
 		nonce	  => $env->{'plack.nonce'},
 		agent_id  => $agent,
 		functions => $functions
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3136,7 +3110,7 @@ sub function {
 
 	    $res->status( 403 );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3161,7 +3135,7 @@ sub feature {
 	$dbpassword,
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session, 'admin_create,create_features' ) ) {
@@ -3182,12 +3156,12 @@ sub feature {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_feature.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @admin_nav,
+		nav		=> @admin_nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
+		agent_id	=> $agent,
 		);
-	    
-	    $res->body( $template->output );
+
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3206,18 +3180,18 @@ sub feature {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_feature.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => $session->{is_admin} ? @admin_nav : @nav,
+		nav		=> $session->{is_admin} ? @admin_nav : @nav,
 		nonce		=> $env->{'plack.nonce'},
 		);
-	    
+
 	    $template->param( %$feature );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update'  && check_role( $session, 'admin_update,update_features' ) ) {
+	} elsif ( $params->{action} eq 'update'	 && check_role( $session, 'admin_update,update_features' ) ) {
 	    my $sql = "UPDATE ai_features SET description = ?, code = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3233,7 +3207,7 @@ sub feature {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete'  && check_role( $session, 'admin_delete,delete_feature' )) {
+	} elsif ( $params->{action} eq 'delete'	 && check_role( $session, 'admin_delete,delete_feature' )) {
 	    my $sql = "DELETE FROM ai_features WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3265,13 +3239,13 @@ sub feature {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/features.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav       => $session->{is_admin} ? @admin_nav : @nav,
+		nav	  => $session->{is_admin} ? @admin_nav : @nav,
 		nonce	  => $env->{'plack.nonce'},
 		agent_id  => $agent,
 		features  => $features
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3283,7 +3257,7 @@ sub feature {
 
 	    $res->status( 403 );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3293,14 +3267,14 @@ sub feature {
 }
 
 sub functionargs {
-    my $env          = shift;
-    my $req          = Plack::Request->new( $env );
-    my $agent        = $req->param( 'agent_id' );
+    my $env	     = shift;
+    my $req	     = Plack::Request->new( $env );
+    my $agent	     = $req->param( 'agent_id' );
     my $function_id  = $req->param( 'function_id' );
     my $functionnam  = $req->param( 'function_name' );
-    my $method       = $req->method;
-    my $res          = Plack::Response->new( 200 );
-    my $params       = $req->parameters;
+    my $method	     = $req->method;
+    my $res	     = Plack::Response->new( 200 );
+    my $params	     = $req->parameters;
 
     my $session = $env->{'psgix.session'};
 
@@ -3311,11 +3285,11 @@ sub functionargs {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     $params->{active_checked} = $params->{active} ? 'checked' : '';
     $params->{required_checked} = $params->{required} ? 'checked' : '';
-    
+
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_functionargs' ) ) {
 	    my $sql = "INSERT INTO ai_function_argument (function_id, agent_id, name, type, description, active, required) VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -3335,14 +3309,14 @@ sub functionargs {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_function_argument.tmpl", die_on_bad_params => 0 );
 	    print STDERR Dumper($params);
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
-		function_id     => $function_id,
-		function_name   => $functionnam
+		agent_id	=> $agent,
+		function_id	=> $function_id,
+		function_name	=> $functionnam
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3361,19 +3335,19 @@ sub functionargs {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_function_argument.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		agent_id        => $agent,
-		function_id     => $function_id,
-		function_name   => $functionnam
+		agent_id	=> $agent,
+		function_id	=> $function_id,
+		function_name	=> $functionnam
 		);
 
 	    $function_args->{active_checked}   = $function_args->{active}   ? 'checked' : '';
 	    $function_args->{required_checked} = $function_args->{required} ? 'checked' : '';
-	    
+
 	    $template->param( %$function_args );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3394,7 +3368,7 @@ sub functionargs {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete'  && check_role( $session ,'admin_delete,delete_functionargs' )) {
+	} elsif ( $params->{action} eq 'delete'	 && check_role( $session ,'admin_delete,delete_functionargs' )) {
 	    my $sql = "DELETE FROM ai_function_argument WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3426,7 +3400,7 @@ sub functionargs {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/function_arguments.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav            => @nav,
+		nav	       => @nav,
 		nonce	   => $env->{'plack.nonce'},
 		agent_id       => $agent,
 		function_id    => $function_id,
@@ -3434,7 +3408,7 @@ sub functionargs {
 		function_name  => $functionnam
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3446,7 +3420,7 @@ sub functionargs {
 
 	    $res->status( 403 );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3456,13 +3430,13 @@ sub functionargs {
 }
 
 sub featuretoggles {
-    my $env          = shift;
-    my $req          = Plack::Request->new( $env );
+    my $env	     = shift;
+    my $req	     = Plack::Request->new( $env );
     my $feature_id   = $req->param( 'feature_id' );
     my $featurenam   = $req->param( 'feature_name' );
-    my $method       = $req->method;
-    my $res          = Plack::Response->new( 200 );
-    my $params       = $req->parameters;
+    my $method	     = $req->method;
+    my $res	     = Plack::Response->new( 200 );
+    my $params	     = $req->parameters;
 
     my $session = $env->{'psgix.session'};
 
@@ -3473,7 +3447,7 @@ sub featuretoggles {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_featuretoggles' ) ) {
@@ -3494,13 +3468,13 @@ sub featuretoggles {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_feature_toggle.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		feature_id      => $feature_id,
-		feature_name    => $featurenam
+		feature_id	=> $feature_id,
+		feature_name	=> $featurenam
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3519,15 +3493,15 @@ sub featuretoggles {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_feature_toggle.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		feature_id      => $feature_id,
-		feature_name    => $featurenam
+		feature_id	=> $feature_id,
+		feature_name	=> $featurenam
 		);
 
 	    $template->param( %$feature_toggles );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3548,7 +3522,7 @@ sub featuretoggles {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete'  && check_role( $session ,'admin_delete,delete_featuretoggles' )) {
+	} elsif ( $params->{action} eq 'delete'	 && check_role( $session ,'admin_delete,delete_featuretoggles' )) {
 	    my $sql = "DELETE FROM ai_feature_toggles WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3580,14 +3554,14 @@ sub featuretoggles {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/feature_toggle.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
-		nonce	        => $env->{'plack.nonce'},
-		feature_id      => $feature_id,
-		feature_name    => $featurenam,
-		featuretoggles  => $featuretoggles
+		nav		=> @nav,
+		nonce		=> $env->{'plack.nonce'},
+		feature_id	=> $feature_id,
+		feature_name	=> $featurenam,
+		featuretoggles	=> $featuretoggles
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3599,7 +3573,7 @@ sub featuretoggles {
 
 	    $res->status( 403 );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3609,13 +3583,13 @@ sub featuretoggles {
 }
 
 sub featurestrings {
-    my $env          = shift;
-    my $req          = Plack::Request->new( $env );
+    my $env	     = shift;
+    my $req	     = Plack::Request->new( $env );
     my $feature_id   = $req->param( 'feature_id' );
     my $featurenam   = $req->param( 'feature_name' );
-    my $method       = $req->method;
-    my $res          = Plack::Response->new( 200 );
-    my $params       = $req->parameters;
+    my $method	     = $req->method;
+    my $res	     = Plack::Response->new( 200 );
+    my $params	     = $req->parameters;
 
     my $session = $env->{'psgix.session'};
 
@@ -3626,10 +3600,10 @@ sub featurestrings {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     $params->{required_checked} = $params->{required} ? 'checked' : '';
-    
+
     if ( $method eq 'POST' ) {
 	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_featurestrings' ) ) {
 	    my $sql = "INSERT INTO ai_feature_strings ( string, description, string_order, required, feature_id ) VALUES ( ?, ?, ?, ?, ? )";
@@ -3649,13 +3623,13 @@ sub featurestrings {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_feature_string.tmpl", die_on_bad_params => 0 );
 	    print STDERR Dumper($params);
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		feature_id      => $feature_id,
-		feature_name    => $featurenam,
+		feature_id	=> $feature_id,
+		feature_name	=> $featurenam,
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3674,17 +3648,17 @@ sub featurestrings {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_feature_string.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav             => @nav,
+		nav		=> @nav,
 		nonce		=> $env->{'plack.nonce'},
-		feature_id      => $feature_id,
-		feature_name    => $featurenam,
+		feature_id	=> $feature_id,
+		feature_name	=> $featurenam,
 		);
 
 	    $feature_strings->{required_checked} = $feature_strings->{required} ? 'checked' : '';
-	    
+
 	    $template->param( %$feature_strings );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3705,7 +3679,7 @@ sub featurestrings {
 	    $dbh->disconnect;
 
 	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete'  && check_role( $session ,'admin_delete,delete_featurestrings' )) {
+	} elsif ( $params->{action} eq 'delete'	 && check_role( $session ,'admin_delete,delete_featurestrings' )) {
 	    my $sql = "DELETE FROM ai_feature_strings WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
@@ -3737,14 +3711,14 @@ sub featurestrings {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/feature_strings.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav            => @nav,
+		nav	       => @nav,
 		nonce	   => $env->{'plack.nonce'},
 		feature_id     => $feature_id,
 		feature_name   => $featurenam,
 		featurestrings => $featurestrings
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3756,7 +3730,7 @@ sub featurestrings {
 
 	    $res->status( 403 );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
@@ -3764,158 +3738,6 @@ sub featurestrings {
 	}
     }
 }
-
-sub context {
-    my $env    = shift;
-    my $req    = Plack::Request->new( $env );
-    my $agent  = $req->param( 'agent_id' );
-    my $method = $req->method;
-    my $params = $req->parameters;
-    my $res    = Plack::Response->new( 200 );
-
-    my $session = $env->{'psgix.session'};
-
-    $res->content_type( 'text/html' );
-
-    my $dbh = DBI->connect(
-	"dbi:Pg:dbname=$database;host=$host;port=$port",
-	$dbusername,
-	$dbpassword,
-	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
-
-    if ( $method eq 'POST' ) {
-
-	$params->{consolidate} = $params->{consolidate} ? 1 : 0;
-
-	$params->{full_reset}  = $params->{full_reset}  ? 1 : 0;
-
-	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_contexts' ) ) {
-	    my $sql = "INSERT INTO ai_context (agent_id, name, pattern, toggle_function, consolidate, full_reset, user_prompt, system_prompt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $agent, $params->{name}, $params->{pattern}, $params->{toggle_function}, $params->{consolidate}, $params->{full_reset}, $params->{user_prompt}, $params->{system_prompt} ) or die $DBI::errstr;
-
-	    $sth->finish;
-
-	    $dbh->disconnect;
-
-	    $res->redirect( "/context?agent_id=$agent" );
-
-	    return $res->finalize;
-	} elsif ( $params->{action} eq 'add' && check_role( $session ,'admin_create,create_contexts' ) ) {
-
-	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_context.tmpl", die_on_bad_params => 0 );
-
-	    $template->param(
-		nav      => @nav,
-		nonce    => $env->{'plack.nonce'},
-		agent_id => $agent,
-		);
-
-	    $res->body( $template->output );
-
-	    return $res->finalize;
-	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_update,update_contexts' ) ) {
-	    my $sql = "SELECT * FROM ai_context WHERE id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $params->{id} ) or die $DBI::errstr;
-
-	    my $context = $sth->fetchrow_hashref;
-
-	    $sth->finish;
-
-	    $context->{consolidate_checked} = $context->{consolidate} ? 'checked' : '';
-	    $context->{full_reset_checked}  = $context->{full_reset}  ? 'checked' : '';
-
-	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_context.tmpl", die_on_bad_params => 0 );
-
-	    $template->param(
-		nav      => @nav,
-		nonce    => $env->{'plack.nonce'},
-		agent_id => $agent,
-		);
-
-	    $template->param( %$context );
-
-	    $res->body( $template->output );
-
-	    $dbh->disconnect;
-
-	    return $res->finalize;
-	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_contexts' ) ) {
-	    my $sql = "UPDATE ai_context SET name = ?, pattern = ?, toggle_function = ?, consolidate = ?, full_reset = ? , user_prompt = ?, system_prompt = ? WHERE id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $params->{name}, $params->{pattern}, $params->{toggle_function}, $params->{consolidate}, $params->{full_reset}, $params->{user_prompt}, $params->{system_prompt}, $params->{id} ) or die $DBI::errstr;
-
-	    $sth->finish;
-
-	    $dbh->disconnect;
-
-	    $res->redirect( "/context?agent_id=$agent" );
-
-	    return $res->finalize;
-	} elsif ( $params->{action} eq 'delete' && check_role( $session ,'admin_delete,delete_contexts' ) ) {
-	    my $sql = "DELETE FROM ai_context WHERE id = ?";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $params->{id} ) or die $DBI::errstr;
-
-	    $sth->finish;
-
-	    $dbh->disconnect;
-
-	    $res->redirect( "/context?agent_id=$agent" );
-
-	    return $res->finalize;
-	}
-    } else {
-	if ( check_role( $session ,'admin_view,view_contexts' ) ) {
-	    my $sql = "SELECT * FROM ai_context WHERE agent_id = ? ORDER BY created DESC";
-
-	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $agent ) or die $DBI::errstr;
-
-	    my $contexts = $sth->fetchall_arrayref({});
-
-	    $sth->finish;
-
-	    $dbh->disconnect;
-
-	    my $template = HTML::Template::Expr->new( filename => "/app/template/context.tmpl", die_on_bad_params => 0 );
-
-	    $template->param(
-		nav      => @nav,
-		nonce    => $env->{'plack.nonce'},
-		agent_id => $agent,
-		contexts => $contexts
-		);
-
-	    $res->body( $template->output );
-
-	    return $res->finalize;
-	} else {
-	    my $template = HTML::Template->new(filename => '/app/template/403.tmpl');
-
-	    $template->param(message => "You do not have permission to access this resource");
-
-	    $res->status(403);
-
-	    $res->body($template->output);
-
-	    $dbh->disconnect;
-
-	    return $res->finalize;
-	}
-    }
-}
-
 sub step {
     my $env    = shift;
     my $req    = Plack::Request->new( $env );
@@ -3926,7 +3748,7 @@ sub step {
 
     my $session = $env->{'psgix.session'};
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     my $dbh = DBI->connect(
 	"dbi:Pg:dbname=$database;host=$host;port=$port",
@@ -3936,14 +3758,18 @@ sub step {
 
     if ( $method eq 'POST' ) {
 
-	$params->{ai_step_b2b_functions} = $params->{ai_step_b2b_functions} ? 1 : 0;
+	$params->{end} = $params->{end} ? 1 : 0;
+	$params->{skip_user_turn} = $params->{skip_user_turn} ? 1 : 0;
+	$params->{full_reset} = $params->{full_reset} ? 1 : 0;
+	$params->{consolidate} = $params->{consolidate} ? 1 : 0;
+
 
 	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_step' ) ) {
-	    my $sql = "INSERT INTO ai_steps (agent_id, ai_step_pattern, ai_step_response, ai_step_b2b_functions, toggle_function, custom_action) VALUES ( ?, ?, ?, ?, ?, ? )";
+	    my $sql = "INSERT INTO ai_steps ( agent_id, step_name, context, functions, step_criteria, valid_steps, \"end\", text, skip_user_turn, valid_contexts, full_reset, consolidate, system_prompt, user_prompt, step_order ) VALUES ( ?,?,?,?,?,?,?,?,?,?,?,?,?,?,? )";
 
 	    my $sth = $dbh->prepare( $sql );
 
-	    $sth->execute( $agent, $params->{ai_step_pattern}, $params->{ai_step_response}, $params->{ai_step_b2b_functions}, $params->{toggle_function}, $params->{custom_action} ) or die $DBI::errstr;
+	    $sth->execute( $agent, $params->{step_name}, $params->{context}, $params->{functions}, $params->{step_criteria}, $params->{valid_steps}, $params->{end}, $params->{text}, $params->{skip_user_turn}, $params->{valid_contexts}, $params->{full_reset}, $params->{consolidate}, $params->{system_prompt}, $params->{user_prompt}, $params->{step_order} ) or die $DBI::errstr;
 
 	    $sth->finish;
 
@@ -3957,12 +3783,12 @@ sub step {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_step.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav      => @nav,
-		nonce    => $env->{'plack.nonce'},
+		nav	 => @nav,
+		nonce	 => $env->{'plack.nonce'},
 		agent_id => $agent,
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} elsif ( $params->{action} eq 'edit' && check_role( $session ,'admin_update,update_step' ) ) {
@@ -3981,24 +3807,23 @@ sub step {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_step.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav      => @nav,
-		nonce    => $env->{'plack.nonce'},
+		nav	 => @nav,
+		nonce	 => $env->{'plack.nonce'},
 		agent_id => $agent,
 		);
 
 	    $template->param( %$step );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    $dbh->disconnect;
 
 	    return $res->finalize;
 	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_step' ) ) {
-	    my $sql = "UPDATE ai_steps SET ai_step_pattern = ?, ai_step_response = ?, ai_step_b2b_functions = ?, toggle_function = ?, custom_action = ? WHERE id = ?";
+	    my $sql = "UPDATE ai_steps SET step_name = ?, context = ?, functions = ?, step_criteria = ?, valid_steps = ?, \"end\" = ?, text = ?, skip_user_turn = ?, valid_contexts = ?, full_reset = ?, consolidate = ?, system_prompt = ?, user_prompt = ?, step_order = ? WHERE id = ?";
 
 	    my $sth = $dbh->prepare( $sql );
-
-	    $sth->execute( $params->{ai_step_pattern}, $params->{ai_step_response}, $params->{ai_step_b2b_functions}, $params->{toggle_function}, $params->{custom_action}, $params->{id} ) or die $DBI::errstr;
+	    $sth->execute( $params->{step_name}, $params->{context}, $params->{functions}, $params->{step_criteria}, $params->{valid_steps}, $params->{end}, $params->{text}, $params->{skip_user_turn}, $params->{valid_contexts}, $params->{full_reset}, $params->{consolidate}, $params->{system_prompt}, $params->{user_prompt}, $params->{step_order}, $params->{id} ) or die $DBI::errstr;
 	    $sth->finish;
 
 	    $dbh->disconnect;
@@ -4023,7 +3848,7 @@ sub step {
 	}
     } else {
 	if ( check_role( $session ,'admin_view,view_step' ) ) {
-	    my $sql = "SELECT * FROM ai_steps WHERE agent_id = ? ORDER BY ai_step_pattern ASC";
+	    my $sql = "SELECT * FROM ai_steps WHERE agent_id = ? ORDER BY context, step_order ASC";
 
 	    my $sth = $dbh->prepare( $sql );
 
@@ -4038,13 +3863,13 @@ sub step {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/step.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav      => @nav,
-		nonce    => $env->{'plack.nonce'},
+		nav	 => @nav,
+		nonce	 => $env->{'plack.nonce'},
 		agent_id => $agent,
 		steps => $steps
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} else {
@@ -4054,7 +3879,7 @@ sub step {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    $dbh->disconnect;
 
@@ -4070,7 +3895,7 @@ sub users {
     my $res    = Plack::Response->new( 200 );
     my $params = $req->parameters;
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     my $session = $env->{'psgix.session'};
 
@@ -4081,8 +3906,8 @@ sub users {
 	{ AutoCommit => 1, RaiseError => 1 } ) or die $DBI::errstr;
 
     if ( $method eq 'POST' ) {
-	$params->{is_admin}     = $params->{is_admin}     ? 1 : 0;
-	$params->{is_viewer}    = $params->{is_viewer}    ? 1 : 0;
+	$params->{is_admin}	= $params->{is_admin}	  ? 1 : 0;
+	$params->{is_viewer}	= $params->{is_viewer}	  ? 1 : 0;
 
 	if ( $params->{action} eq 'create' && check_role( $session ,'admin_create,create_users' ) ) {
 	    my $sql = "INSERT INTO ai_users (username, password, first_name, last_name, email, phone_number, is_admin, is_viewer) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -4099,7 +3924,7 @@ sub users {
 	    $sth->finish;
 
 	    $res->status( 302 );
-	    
+
 	    $res->redirect( "/users" );
 
 	    return $res->finalize;
@@ -4107,11 +3932,11 @@ sub users {
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/create_user.tmpl", die_on_bad_params => 0 );
 
 	    $template->param(
-		nav      => $session->{is_admin} ? @admin_nav : @user_nav,
-		nonce    => $env->{'plack.nonce'}
+		nav	 => $session->{is_admin} ? @admin_nav : @user_nav,
+		nonce	 => $env->{'plack.nonce'}
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} elsif ( $params->{action} eq 'update' && check_role( $session ,'admin_update,update_users' ) ) {
@@ -4162,21 +3987,21 @@ sub users {
 
 	    my $user = $sth->fetchrow_hashref;
 
-	    $user->{is_admin_checked}     = $user->{is_admin}     ? 'checked' : '';
-	    $user->{is_viewer_checked}    = $user->{is_viewer}    ? 'checked' : '';
+	    $user->{is_admin_checked}	  = $user->{is_admin}	  ? 'checked' : '';
+	    $user->{is_viewer_checked}	  = $user->{is_viewer}	  ? 'checked' : '';
 
 	    my $template = HTML::Template::Expr->new( filename => "/app/template/edit_user.tmpl", die_on_bad_params => 0 );
 
 	    delete $user->{password};
 
 	    $template->param(
-		nav         => $session->{is_admin} ? @admin_nav : @user_nav,
-		nonce       => $env->{'plack.nonce'},
+		nav	    => $session->{is_admin} ? @admin_nav : @user_nav,
+		nonce	    => $env->{'plack.nonce'},
 		);
 
 	    $template->param( %$user );
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	}
@@ -4195,12 +4020,12 @@ sub users {
 	    $dbh->disconnect;
 
 	    $template->param(
-		nav      => $session->{is_admin} ? @admin_nav : @user_nav,
-		nonce    => $env->{'plack.nonce'},
-		users    => $users
+		nav	 => $session->{is_admin} ? @admin_nav : @user_nav,
+		nonce	 => $env->{'plack.nonce'},
+		users	 => $users
 		);
 
-	    $res->body( $template->output );
+	    $res->body( encode('UTF-8', $template->output ) );
 
 	    return $res->finalize;
 	} else {
@@ -4210,7 +4035,7 @@ sub users {
 
 	    $res->status(403);
 
-	    $res->body($template->output);
+	    $res->body(encode('UTF-8', $template->output ));
 
 	    $dbh->disconnect;
 
@@ -4227,20 +4052,20 @@ sub debug {
 
     my $session = $env->{'psgix.session'};
 
-    $res->content_type( 'text/html' );
+    $res->content_type( 'text/html; charset=UTF-8' );
 
     if ( check_role( $session ,'admin_view,view_debug' ) ) {
 
 	my $template = HTML::Template::Expr->new( filename => "/app/template/debug.tmpl", die_on_bad_params => 0 );
 
 	$template->param(
-	    nav      => @nav,
+	    nav	     => @nav,
 	    nonce    => $env->{'plack.nonce'},
-	    wss      => "wss://$env->{HTTP_HOST}/websocket",
+	    wss	     => "wss://$env->{HTTP_HOST}/websocket",
 	    agent_id => $agent
 	    );
 
-	$res->body( $template->output );
+	$res->body( encode('UTF-8', $template->output ) );
 
 	return $res->finalize;
     } else {
@@ -4250,19 +4075,19 @@ sub debug {
 
 	$res->status(403);
 
-	$res->body($template->output);
+	$res->body(encode('UTF-8', $template->output ));
 
 	return $res->finalize;
     }
 }
 
 my $debug_app = sub {
-    my $env       = shift;
-    my $req       = Plack::Request->new( $env );
-    my $swml      = SignalWire::ML->new;
+    my $env	  = shift;
+    my $req	  = Plack::Request->new( $env );
+    my $swml	  = SignalWire::ML->new;
     my $post_data = decode_json( $req->raw_body );
-    my $agent     = $req->param( 'agent_id' );
-    my $res       = Plack::Response->new( 200 );
+    my $agent	  = $req->param( 'agent_id' );
+    my $res	  = Plack::Response->new( 200 );
 
     $res->content_type( 'application/json' );
 
@@ -4274,17 +4099,17 @@ my $debug_app = sub {
 };
 
 my $post_app = sub {
-    my $env       = shift;
-    my $req       = Plack::Request->new( $env );
-    my $agent     = $req->param( 'agent_id' );
+    my $env	  = shift;
+    my $req	  = Plack::Request->new( $env );
+    my $agent	  = $req->param( 'agent_id' );
     my $post_data = decode_json( $req->raw_body );
-    my $swml      = SignalWire::ML->new;
-    my $raw       = $post_data->{post_prompt_data}->{raw};
-    my $data      = $post_data->{post_prompt_data}->{parsed}->[0];
+    my $swml	  = SignalWire::ML->new;
+    my $raw	  = $post_data->{post_prompt_data}->{raw};
+    my $data	  = $post_data->{post_prompt_data}->{parsed}->[0];
     my $recording = $post_data->{SWMLVars}->{record_call_url};
-    my $from      = $post_data->{SWMLVars}->{from};
-    my $json      = JSON::PP->new->ascii->allow_nonref;
-    my $action    = $post_data->{action};
+    my $from	  = $post_data->{SWMLVars}->{from};
+    my $json	  = JSON::PP->new->ascii->allow_nonref;
+    my $action	  = $post_data->{action};
     my $convo_id  = $post_data->{conversation_id};
     my $convo_sum = $post_data->{conversation_summary};
 
@@ -4368,6 +4193,10 @@ my $post_app = sub {
 
 	my $json_data = $req->raw_body;
 
+	my $decoded_data = decode_json( $json_data );
+
+	print STDERR "JSON DATA: $json_data\n";
+
 	my $sth = $dbh->prepare( $insert_sql );
 
 	$sth->execute( $json_data, $agent ) or die $DBI::errstr;
@@ -4388,7 +4217,7 @@ my $post_app = sub {
 			     'Content-Type' => 'application/json',
 			     'Content' =>
 			     $json->encode({
-				 text       => ":signalwire: :new: New Conversation https://$env->{HTTP_HOST}/agent?id=$last_insert_id&agent_id=$agent -> $raw",
+				 text	    => ":signalwire: :new: New Conversation https://$env->{HTTP_HOST}/agent?id=$last_insert_id&agent_id=$agent -> $raw",
 				 channel    => "$config{SLACK_CHANNEL}",
 				 username   => "$config{SLACK_USERNAME}",
 				 icon_emoji => ":robot_face:"
@@ -4399,7 +4228,7 @@ my $post_app = sub {
 	    broadcast_by_agent_id( $agent, 'Slack notification sent' );
 	}
 
-	if ( $config{ENABLE_ZENDESK_TICKET} && $config{ZENDESK_API_KEY} && $config{ZENDESK_SUBDOMAIN} ) {
+	if ( $config{ENABLE_ZENDESK_TICKET} && $config{ZENDESK_API_KEY} && $config{ZENDESK_SUBDOMAIN} && $decoded_data->{caller_id_name} !~ m/^Outbound\sCall$/i) {
 	    my $ua = LWP::UserAgent->new;
 
 	    $ua->timeout( 5 );
@@ -4429,18 +4258,18 @@ my $post_app = sub {
 	    my $sw = SignalWire::RestAPI->new(
 		AccountSid  => $config{ACCOUNT_SID},
 		AuthToken   => $config{AUTH_TOKEN},
-		Space       => $config{SPACE_NAME},
+		Space	    => $config{SPACE_NAME},
 		);
 
 	    my @assistants = split( /\|/, $config{CUSTODIAN_SMS} );
 
 	    foreach my $number ( @assistants ) {
-		$response = $sw->POST( 'Messages',
-				       From     => $config{ASSISTANT},
-				       To       => $number,
-				       Body     => $raw,
-				       ( $recording ? ( MediaUrl => $recording ) : ())
-		    );
+			$response = $sw->POST( 'Messages',
+						From	 => $config{ASSISTANT},
+						To	 => $number,
+						Body	 => $raw,
+						( $recording ? ( MediaUrl => $recording ) : ())
+				);
 		print STDERR "Response: " . Dumper( $response ) . "\n" if $ENV{DEBUG};
 	    }
 	}
@@ -4509,9 +4338,9 @@ my $websocket_app = sub {
 	    my $ping_timer;
 
 	    $ping_timer = AnyEvent->timer(
-		after    => 0,
+		after	 => 0,
 		interval => 30,
-		cb       => sub {
+		cb	 => sub {
 		    return unless $clients{$uuid};
 
 		    eval { $conn->send( 'ping' ) };
@@ -4546,25 +4375,25 @@ my $websocket_app = sub {
 my $assets_app = Plack::App::Directory->new( root => "/app/assets" )->to_app;
 
 my $web_app = sub {
-    my $env      = shift;
-    my $req      = Plack::Request->new( $env );
-    my $swml     = SignalWire::ML->new;
-    my $agent    = $req->param( 'agent_id' );
-    my $path     = $req->path_info;
-    my $method   = $req->method;
+    my $env	 = shift;
+    my $req	 = Plack::Request->new( $env );
+    my $swml	 = SignalWire::ML->new;
+    my $agent	 = $req->param( 'agent_id' );
+    my $path	 = $req->path_info;
+    my $method	 = $req->method;
     my $redirect = $req->param( 'redirect' );
-    my $request  =  uri_escape( $env->{'REQUEST_URI'} );
+    my $request	 =  uri_escape( $env->{'REQUEST_URI'} );
 
     my $session = $env->{'psgix.session'};
 
-    print STDERR "Path: $path\n"                       if $ENV{DEBUG};
-    print STDERR "Method: $method\n"                   if $ENV{DEBUG};
-    print STDERR "Agent: $agent\n"                     if $agent && $ENV{DEBUG};
+    print STDERR "Path: $path\n"		       if $ENV{DEBUG};
+    print STDERR "Method: $method\n"		       if $ENV{DEBUG};
+    print STDERR "Agent: $agent\n"		       if $agent && $ENV{DEBUG};
 
     if ( $path eq '/login' ) {
 	my $res = Plack::Response->new( 200 );
 
-	$res->content_type( 'text/html' );
+	$res->content_type( 'text/html; charset=UTF-8' );
 
 	if ( $method eq 'POST' ) {
 	    my $username = $req->param( 'username' );
@@ -4589,11 +4418,11 @@ my $web_app = sub {
 
 		my $user_id = $dbh->selectrow_array( "SELECT id FROM ai_users WHERE username = ?", undef, $username );
 
-		$session->{is_admin}     = $admin;
-		$session->{is_viewer}    = $viewer;
+		$session->{is_admin}	 = $admin;
+		$session->{is_viewer}	 = $viewer;
 		$session->{totp_enabled} = $totp;
-		$session->{username}     = $username;
-		$session->{user_id}      = $user_id;
+		$session->{username}	 = $username;
+		$session->{user_id}	 = $user_id;
 
 		my $sth = $dbh->prepare("SELECT * FROM ai_user_roles WHERE user_id = ?");
 
@@ -4627,7 +4456,7 @@ my $web_app = sub {
 		     ( $redirect ? ( redirect => $redirect ) : ())
 		    );
 
-		$res->body( $template->output );
+		$res->body( encode('UTF-8', $template->output ) );
 	    }
 	}
 
@@ -4639,7 +4468,7 @@ my $web_app = sub {
 	} else {
 	    my $res = Plack::Response->new( 200 );
 
-	    $res->content_type( 'text/html' );
+	    $res->content_type( 'text/html; charset=UTF-8' );
 	    $res->redirect( "/" );
 
 	    return $res->finalize;
@@ -4647,7 +4476,7 @@ my $web_app = sub {
     } else {
 	my $res = Plack::Response->new( 200 );
 
-	$res->content_type( 'text/html' );
+	$res->content_type( 'text/html; charset=UTF-8' );
 
 	$res->redirect( $request ne '' ? "/login?redirect=$request" : "/login" );
 
@@ -4655,10 +4484,85 @@ my $web_app = sub {
     }
 };
 
+sub docall {
+    my $env	   = shift;
+    my $req	   = Plack::Request->new( $env );
+    my $method	   = $req->method;
+    my $res	   = Plack::Response->new( 200 );
+    my $params	   = $req->parameters;
+    my $session	   = $env->{'psgix.session'};
+    my $agent_id   = $req->param( 'agent_id' );
+    my $from	   = $req->param( 'from' );
+
+    $res->content_type( 'text/html; charset=UTF-8' );
+
+    my $template = HTML::Template::Expr->new( filename => '/app/template/docall.tmpl', die_on_bad_params => 0 );
+
+    $template->param( agent_id => $agent_id, from => $from );
+
+    $res->body( encode('UTF-8', $template->output ) );
+
+    return $res->finalize;
+}
+
+sub call {
+    my $env	   = shift;
+    my $req	   = Plack::Request->new( $env );
+    my $method	   = $req->method;
+    my $res	   = Plack::Response->new( 200 );
+    my $params	   = $req->parameters;
+    my $session	   = $env->{'psgix.session'};
+    my $agent_id   = $req->param( 'agent_id' );
+    my $from	   = $req->param( 'from' );
+    my $to	   = $req->param( 'to' );
+
+    $res->content_type( 'text/html; charset=UTF-8' );
+    if ( $method eq 'POST' ) {
+
+	my %config;
+
+	tie %config, 'MyTieConfig',
+	    host     => $host,
+	    port     => $port,
+	    dbname   => $database,
+	    user     => $dbusername,
+	    password => $dbpassword,
+	    table    => 'ai_config',
+	    agent_id => $agent_id;
+
+
+	my $sw = SignalWire::RestAPI->new(
+	    AccountSid	=> $config{ACCOUNT_SID},
+	    AuthToken	=> $config{AUTH_TOKEN},
+	    Space	=> $config{SPACE_NAME},
+	    API_VERSION => "api/calling"
+	    );
+
+
+	my $susername = $config{AUTH_USERNAME};
+	my $spassword = $config{AUTH_PASSWORD};
+
+	untie %config;
+
+	my $response = $sw->POST( "calls", command => "dial", params => { url => "https://$susername:$spassword\@$env->{HTTP_HOST}/swml?agent_id=$agent_id&outbound=true", to => "$to", from => "$from" } );
+
+	$res->body( "Call $to for agent $agent_id" );
+
+	return $res->finalize;
+
+    } else {
+
+
+	$res->body( "Wrong Method" );
+
+	return $res->finalize;
+    }
+}
+
 my $logout_app = sub {
-	my $env      = shift;
+	my $env	     = shift;
 	my $session  = $env->{'psgix.session'};
-	my $req      = Plack::Request->new( $env );
+	my $req	     = Plack::Request->new( $env );
 	my $redirect = $req->param( 'redirect' );
 
 	$session->{logged_in} = 0;
@@ -4673,7 +4577,7 @@ my $logout_app = sub {
 
 	my $res = Plack::Response->new( 200 );
 
-	$res->content_type( 'text/html' );
+	$res->content_type( 'text/html; charset=UTF-8' );
 
 	$res->redirect( $redirect ne '' ? "/login?redirect=$redirect" : "/login" );
 
@@ -4689,12 +4593,12 @@ sub authenticator {
     my %config;
 
     tie %config, 'MyTieConfig',
-	host     => $host,
-	port     => $port,
-	dbname   => $database,
-	user     => $dbusername,
+	host	 => $host,
+	port	 => $port,
+	dbname	 => $database,
+	user	 => $dbusername,
 	password => $dbpassword,
-	table    => 'ai_config',
+	table	 => 'ai_config',
 	agent_id => $agent;
 
     my $susername = $config{AUTH_USERNAME};
@@ -4711,14 +4615,14 @@ my $server = builder {
 	my $app = shift;
 
 	return sub {
-	    my $env     = shift;
-	    my $nonce   = generate_nonce();
-	    my $wss     = "wss://$env->{HTTP_HOST}";
+	    my $env	= shift;
+	    my $nonce	= generate_nonce();
+	    my $wss	= "wss://$env->{HTTP_HOST}";
 	    my $session = $env->{'psgix.session'};
 
 	    $env->{'plack.nonce'} = $nonce;
 
-	    my $res     = $app->( $env );
+	    my $res	= $app->( $env );
 
 	    if ( $env->{PATH_INFO} ) {
 		Plack::Util::header_set( $res->[1], 'Expires', 0 );
@@ -4763,12 +4667,12 @@ my $server = builder {
 	$debug_app;
     };
 
-    mount "/websocket" => $websocket_app;
-    mount "/register"  => $register_app;
-    mount "/reset"     => $reset_app;
-    mount "/assets"    => $assets_app;
-    mount "/logout"    => $logout_app;
-
+    mount "/websocket"	=> $websocket_app;
+    mount "/register"	=> $register_app;
+    mount "/reset"	=> $reset_app;
+    mount "/assets"	=> $assets_app;
+    mount "/logout"	=> $logout_app;
+    mount "/accounting" => $accounting_app;
     mount '/' => $web_app;
 };
 

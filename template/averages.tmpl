@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Post Prompt Averages</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            text-align: center;
+        }
+        table {
+            margin: 20px auto;
+            border-collapse: collapse;
+            width: 50%;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>AI Post Prompt Averages</h1>
+    <table>
+        <tr>
+            <th>Month-Year</th>
+            <th>Avg ASR Cost Factor</th>
+            <th>Avg TTS Chars/Min</th>
+            <th>Avg Tokens In/Min</th>
+            <th>Avg Tokens Out/Min</th>
+            <th>Sum TTS Chars/Min</th>
+            <th>Sum Tokens In</th>
+            <th>Sum Tokens Out</th>
+        </tr>
+        <TMPL_LOOP NAME="monthly_data">
+        <tr>
+            <td><TMPL_VAR NAME="month_year"></td>
+            <td><TMPL_VAR NAME="avg_asr_cost_factor"></td>
+            <td><TMPL_VAR NAME="avg_tts_chars_per_min"></td>
+            <td><TMPL_VAR NAME="avg_tokens_in_per_min"></td>
+            <td><TMPL_VAR NAME="avg_tokens_out_per_min"></td>
+            <td><TMPL_VAR NAME="sum_tts_chars_per_min"></td>
+            <td><TMPL_VAR NAME="sum_tokens_in"></td>
+            <td><TMPL_VAR NAME="sum_tokens_out"></td>
+        </tr>
+        </TMPL_LOOP>
+    </table>
+</body>
+</html>
+

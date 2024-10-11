@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Languages</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
@@ -70,7 +70,29 @@
 	      <label for="language_order">Order:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input id="language_order" name="language_order" value="<TMPL_VAR name="language_order"/>">
+	      <select id="language_order" name="language_order">
+	        <option value="0"<TMPL_IF EXPR="language_order == 0"> selected</TMPL_IF>>0</option>
+	        <option value="1"<TMPL_IF EXPR="language_order == 1"> selected</TMPL_IF>>1</option>
+	        <option value="2"<TMPL_IF EXPR="language_order == 2"> selected</TMPL_IF>>2</option>
+	        <option value="3"<TMPL_IF EXPR="language_order == 3"> selected</TMPL_IF>>3</option>
+	        <option value="4"<TMPL_IF EXPR="language_order == 4"> selected</TMPL_IF>>4</option>
+	        <option value="5"<TMPL_IF EXPR="language_order == 5"> selected</TMPL_IF>>5</option>
+	        <option value="6"<TMPL_IF EXPR="language_order == 6"> selected</TMPL_IF>>6</option>
+	        <option value="7"<TMPL_IF EXPR="language_order == 7"> selected</TMPL_IF>>7</option>
+	        <option value="8"<TMPL_IF EXPR="language_order == 8"> selected</TMPL_IF>>8</option>
+	        <option value="9"<TMPL_IF EXPR="language_order == 9"> selected</TMPL_IF>>9</option>
+	        <option value="10"<TMPL_IF EXPR="language_order == 10"> selected</TMPL_IF>>10</option>
+	        <option value="11"<TMPL_IF EXPR="language_order == 11"> selected</TMPL_IF>>11</option>
+	        <option value="12"<TMPL_IF EXPR="language_order == 12"> selected</TMPL_IF>>12</option>
+	        <option value="13"<TMPL_IF EXPR="language_order == 13"> selected</TMPL_IF>>13</option>
+	        <option value="14"<TMPL_IF EXPR="language_order == 14"> selected</TMPL_IF>>14</option>
+	        <option value="15"<TMPL_IF EXPR="language_order == 15"> selected</TMPL_IF>>15</option>
+	        <option value="16"<TMPL_IF EXPR="language_order == 16"> selected</TMPL_IF>>16</option>
+	        <option value="17"<TMPL_IF EXPR="language_order == 17"> selected</TMPL_IF>>17</option>
+	        <option value="18"<TMPL_IF EXPR="language_order == 18"> selected</TMPL_IF>>18</option>
+	        <option value="19"<TMPL_IF EXPR="language_order == 19"> selected</TMPL_IF>>19</option>
+	        <option value="20"<TMPL_IF EXPR="language_order == 20"> selected</TMPL_IF>>20</option>
+	      </select>
 	    </td>
 	  </tr>
 	  <tr>

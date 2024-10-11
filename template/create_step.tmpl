@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Step</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
@@ -24,34 +24,128 @@
 	  </tr>
 	  <tr>
 	    <td style="text-align: right">
-	      <label for="ai_step_pattern">Pattern:</label>
+	      <label for="step_name">Step name:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input id="ai_step_pattern" name="ai_step_pattern" required>
+	      <input id="step_name" name="step_name" required>
 	      <input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">
 	      <input type="hidden" name="action" value="create">
 	    </td>
 	  </tr>
 	  <tr>
 	    <td style="text-align: right">
-	      <label for="ai_step_b2b_function">B2B Function:</label>
+	      <label for="context">Context:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input type="checkbox" id="ai_step_b2b_function" name="ai_step_b2b_function">
+	      <input type="text" id="context" name="context" value="default">
 	    </td>
 	  </tr>
 	  <tr>
 	    <td style="text-align: right">
-	      <label for="toggle_function">Toggle Function:</label>
+	      <label for="step_order">Step Order:</label>
 	    </td>
 	    <td style="text-align: left">
-	      <input id="toggle_function" name="toggle_function">
+	      <select id="step_order" name="step_order">
+	        <option value="0">0</option>
+	        <option value="1">1</option>
+	        <option value="2">2</option>
+	        <option value="3">3</option>
+	        <option value="4">4</option>
+	        <option value="5">5</option>
+	        <option value="6">6</option>
+	        <option value="7">7</option>
+	        <option value="8">8</option>
+	        <option value="9">9</option>
+	        <option value="10">10</option>
+	        <option value="11">11</option>
+	        <option value="12">12</option>
+	        <option value="13">13</option>
+	        <option value="14">14</option>
+	        <option value="15">15</option>
+	        <option value="16">16</option>
+	        <option value="17">17</option>
+	        <option value="18">18</option>
+	        <option value="19">19</option>
+	        <option value="20">20</option>
+	      </select>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="valid_steps">Valid Steps:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="text" id="valid_steps" name="valid_steps">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="valid_contexts">Valid Contexts:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="text" id="valid_contexts" name="valid_contexts">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="step_criteria">Step Criteria:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="text" id="step_criteria" name="step_criteria">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="text">Text:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <textarea id="text" name="text" rows="25" cols="150"></textarea>
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="functions">Functions:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="text" id="functions" name="functions">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="end">End:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="end" name="end">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="skip_user_turn">Skip User Turn:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="skip_user_turn" name="skip_user_turn">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="full_reset">Full Reset:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="full_reset" name="full_reset">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td style="text-align: right">
+	      <label for="consolidate">Consolidate:</label>
+	    </td>
+	    <td style="text-align: left">
+	      <input type="checkbox" id="consolidate" name="consolidate">
 	    </td>
 	  </tr>
 	  <tr>
 	    <td colspan="2">
-	      <h3>Step Response</h3>
-	      <label for="editorContent" style="display:none;">Step Response</label>
+	      <h3>System Prompt</h3>
+	      <label for="editorContent" style="display:none;">System Prompt</label>
 	      <div id="editor" style="height: 300px; width: 1500px;"></div>
 	      <script nonce="<TMPL_VAR name="nonce"/>">
 		var editor = ace.edit("editor");
@@ -62,7 +156,24 @@
 		document.getElementById('editorContent').value = editor.getValue();
 		});
 	      </script>
-	      <input type="hidden" name="ai_step_response" id="editorContent">
+	      <input type="hidden" name="system_prompt" id="editorContent">
+	    </td>
+	  </tr>
+	  <tr>
+	    <td colspan="2">
+	      <h3>User Prompt</h3>
+	      <label for="usereditorContent" style="display:none;">User Prompt</label>
+	      <div id="usereditor" style="height: 300px; width: 1500px;"></div>
+	      <script nonce="<TMPL_VAR name="nonce"/>">
+		var usereditor = ace.edit("usereditor");
+		usereditor.setTheme("ace/theme/monokai");
+		usereditor.session.setMode("ace/mode/markdown");
+		usereditor.setOption("showPrintMargin", false);
+		document.getElementById('markdownForm').addEventListener('submit', function() {
+		document.getElementById('usereditorContent').value = usereditor.getValue();
+		});
+	      </script>
+	      <input type="hidden" name="user_prompt" id="usereditorContent">
 	    </td>
 	  </tr>
 	  <tr>

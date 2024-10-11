@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Steps</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
@@ -26,22 +26,32 @@
       <div class="container">
 	<table class="info-table">
 	  <tr>
-	    <th>Pattern</th>
-	    <th>Toggle Function</th>
-	    <th>B2B Functions</th>
-	    <th>Action</th>
+	    <th style="text-align: left;">Step Name</th>
+	    <th style="text-align: left;">Context</th>
+		<th style="text-align: left;">Step Order</th>
+	    <th style="text-align: left;">Functions</th>
+	    <th style="text-align: left;">Step Criteria</th>
+	    <th style="text-align: left;">Valid Steps</th>
+	    <th style="text-align: left;">End</th>
+	    <th style="text-align: left;">Skip User Turn</th>
+	    <th style="text-align: left;">Valid Contexts</th>
+	    <th style="text-align: left;">Full Reset</th>
+	    <th style="text-align: left;">Consolidate</th>
+   	    <th style="text-align: left;">Action</th>
 	  </tr>
 	  <TMPL_LOOP name="steps">
 	    <tr>
-	      <td><TMPL_VAR name="ai_step_pattern"/></td>
-	      <td><TMPL_VAR name="toggle_function"/></td>
-	      <td>
-		<TMPL_IF name="ai_step_b2b_functions">
-		  Yes
-		  <TMPL_ELSE>
-		  No
-		</TMPL_IF>
-	      </td>
+	      <td><TMPL_VAR name="step_name"/></td>
+	      <td><TMPL_VAR name="context"/></td>
+		  <td><TMPL_VAR name="step_order"/></td>
+	      <td><TMPL_VAR name="functions"/></td>
+	      <td><TMPL_VAR name="step_criteria"/></td>
+	      <td style="max-width: 150px; word-wrap: break-word;"><TMPL_VAR name="valid_steps"/></td>
+	      <td><TMPL_VAR name="end"/></td>
+	      <td><TMPL_VAR name="skip_user_turn"/></td>
+	      <td style="max-width: 150px; word-wrap: break-word;"><TMPL_VAR name="valid_contexts"/></td>
+	      <td><TMPL_VAR name="full_reset"/></td>
+	      <td><TMPL_VAR name="consolidate"/></td>
 	      <td>
 		<form action="/step" method="POST" accept-charset="utf-8" class="inline-form">
 		  <input type="hidden" name="action" value="delete">
@@ -57,14 +67,16 @@
 		</form>
 	      </td>
 	    </tr>
-	    <tr>
-	      <td colspan="4">
-		<TMPL_VAR name="ai_step_response">
+	    <!-- <tr>
+	      <td style="word-wrap: break-word;" colspan="12">
+		<strong>Text:</strong> <TMPL_VAR name="text"><br>
+		<strong>System Prompt:</strong> <TMPL_VAR name="system_prompt"><br>
+		<strong>User Prompt:</strong> <TMPL_VAR name="user_prompt">
 	      </td>
-	    </tr>
+	    </tr> -->
 	  </TMPL_LOOP>
 	  <tr>
-	    <td colspan="4" class="button">
+	    <td colspan="12" class="button">
 	      <br/><br/>
 	      <form action="/step" method="POST" accept-charset="utf-8">
 		<input type="hidden" name="agent_id" value="<TMPL_VAR name="agent_id"/>">

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>TOTP Enablement</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
@@ -73,7 +73,7 @@
 	    </tr>
 	    <tr>
 	      <td colspan="2" class="button">
-		<img src="<TMPL_VAR NAME="qrcode">" alt="QR Code"/>
+		<img src="data:image/png;base64,<TMPL_VAR NAME='base64_image'>" alt="TOTP QR Code">
 	      </td>
 	    </tr>
 	    <tr>

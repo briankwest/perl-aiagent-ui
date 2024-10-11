@@ -1,67 +1,128 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <title>Configuration</title>
     <link rel="stylesheet" href="/assets/style.css" type="text/css">
     <link rel="icon" type="image/png" href="/assets/favicon.png">
     <script nonce="<TMPL_VAR name="nonce"/>">
-    document.addEventListener('DOMContentLoaded', function () {
-	document.getElementById('submitBtn').addEventListener('click', function () {
-	    event.preventDefault();
-	    const jsonData = {
-		"params": {
-		    "device": {
-			"type": "phone",
-			"params": {
-			    "headers": [],
-			    "to_number": "+19185551212",
-			    "from_number": "+19185551212"
-			}
-		    },
-		    "call_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
-		    "node_id": "936dcdfc-3fce-4d06-a5d0-c0a0ff95d21b@us-east",
-		    "end_time": 0,
-		    "direction": "inbound",
-		    "call_state": "created",
-		    "segment_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
-		    "start_time": 1706206007199,
-		    "answer_time": 0
-		},
-		"space_id": "5bb2200d-3662-4f4d-8a8b-d7806946711c",
-		"timestamp": 1706206007.452151,
-		"event_type": "calling.call.state",
-		"project_id": "5c606b2d-bc2b-4081-9209-d0ca6712085d"
-	    };
+document.addEventListener('DOMContentLoaded', function () {
+    // For JSON download
+    document.getElementById('submitBtnJSON').addEventListener('click', function () {
+        event.preventDefault();
+        const jsonData = {
+            "params": {
+                "device": {
+                    "type": "phone",
+                    "params": {
+                        "headers": [],
+                        "to_number": "+19185551212",
+                        "from_number": "+19185551212"
+                    }
+                },
+                "call_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
+                "node_id": "936dcdfc-3fce-4d06-a5d0-c0a0ff95d21b@us-east",
+                "end_time": 0,
+                "direction": "inbound",
+                "call_state": "created",
+                "segment_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
+                "start_time": 1706206007199,
+                "answer_time": 0
+            },
+            "space_id": "5bb2200d-3662-4f4d-8a8b-d7806946711c",
+            "timestamp": 1706206007.452151,
+            "event_type": "calling.call.state",
+            "project_id": "5c606b2d-bc2b-4081-9209-d0ca6712085d"
+        };
 
-	    const xhr = new XMLHttpRequest();
-	    const url = '<TMPL_VAR name="swml_url">';
+        const xhr = new XMLHttpRequest();
+        const url = '<TMPL_VAR name="swml_url">&format=json';
 
-	    xhr.open('POST', url, true);
-	    xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
 
-	    xhr.onreadystatechange = function () {
-		if (xhr.readyState === 4) {
-		    if (xhr.status === 200) {
-			const responseJson = JSON.parse(xhr.responseText);
-			downloadJSON(responseJson);
-		    } else {
-			console.error('Error:', xhr.statusText);
-		    }
-		}
-	    };
-	    xhr.send(JSON.stringify(jsonData));
-	});
-
-	function downloadJSON(data) {
-	    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-	    const url = window.URL.createObjectURL(jsonBlob);
-	    const a = document.createElement('a');
-	    a.href = url;
-	    a.download = 'agent_<TMPL_VAR name="agent_id">.json';
-	    a.click();
-	    window.URL.revokeObjectURL(url);
-	}
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    const responseJson = JSON.parse(xhr.responseText);
+                    downloadJSON(responseJson);
+                } else {
+                    console.error('Error:', xhr.statusText);
+                }
+            }
+        };
+        xhr.send(JSON.stringify(jsonData));
     });
+
+    // For YAML download
+    document.getElementById('submitBtnYAML').addEventListener('click', function () {
+        event.preventDefault();
+        const jsonData = {
+            "params": {
+                "device": {
+                    "type": "phone",
+                    "params": {
+                        "headers": [],
+                        "to_number": "+19185551212",
+                        "from_number": "+19185551212"
+                    }
+                },
+                "call_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
+                "node_id": "936dcdfc-3fce-4d06-a5d0-c0a0ff95d21b@us-east",
+                "end_time": 0,
+                "direction": "inbound",
+                "call_state": "created",
+                "segment_id": "7a287b11-3124-4cae-8a59-ce0f8300176e",
+                "start_time": 1706206007199,
+                "answer_time": 0
+            },
+            "space_id": "5bb2200d-3662-4f4d-8a8b-d7806946711c",
+            "timestamp": 1706206007.452151,
+            "event_type": "calling.call.state",
+            "project_id": "5c606b2d-bc2b-4081-9209-d0ca6712085d"
+        };
+
+        const xhr = new XMLHttpRequest();
+        const url = '<TMPL_VAR name="swml_url">&format=yaml';  // Append ?format=yaml for YAML format
+
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState === 4) {
+                if (xhr.status === 200) {
+                    const responseYaml = xhr.responseText;
+                    downloadYAML(responseYaml);
+                } else {
+                    console.error('Error:', xhr.statusText);
+                }
+            }
+        };
+        xhr.send(JSON.stringify(jsonData));
+    });
+
+    // Function to download JSON
+    function downloadJSON(data) {
+        const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = window.URL.createObjectURL(jsonBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'agent_<TMPL_VAR name="agent_id">.json';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+
+    // Function to download YAML
+    function downloadYAML(data) {
+        const yamlBlob = new Blob([data], { type: 'application/x-yaml' });
+        const url = window.URL.createObjectURL(yamlBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'agent_<TMPL_VAR name="agent_id">.yaml';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    }
+});
+
     </script>
   </head>
   <body>
@@ -78,7 +139,9 @@
 	      <td>Voice Webhook:</td>
 	      <td>
 		<input type="text" size="80" name="voice" value="<TMPL_VAR name="swml_url">" readonly>
-		<button class="submit-button" id="submitBtn">Download SWML</button>
+		
+		<button class="submit-button" id="submitBtnJSON">Download JSON</button>
+		<button class="submit-button" id="submitBtnYAML">Download YAML</button>
 	      </td>
 	    </tr>
 	    <tr>
